@@ -1,0 +1,8 @@
+# dsh-skill-center bundle patch: inserts the plugin row into the web profile roster.
+# Activate with:
+#   dsh plugin --profile web add link:<path-to-this-package>
+- insert:
+    - id: dsh-skill-center
+      name: "@double-coding/dsh-skill-center"
+      config:
+        showSidebarEntry: true

@@ -370,7 +370,7 @@ export async function deleteSkill(deps: OpsDeps, name: string): Promise<{ name: 
   if (!group) throw fail('not_found', `技能不存在：${name}`)
   const copy = group.copies.find(item => item.root.key === 'dsh' && !item.entry.linked)
     ?? group.copies.find(item => item.root.key === 'agents' && !item.entry.linked)
-  if (!copy) throw fail('not_writable', '只能删除本地或公共 Agent 目录中的非链接技能')
+  if (!copy) throw fail('not_writable', '只能删除本地或公共技能目录中的非链接技能')
   const root = copy.root.key === 'dsh' ? writableDshRoot() : agentsRoot()
   if (!root) throw fail('storage_unavailable', '找不到目标技能目录')
 

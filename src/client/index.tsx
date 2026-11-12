@@ -25,7 +25,7 @@ const MAX_UPLOAD_BYTES = 64 << 20
 
 const ROOT_LABELS: Record<SkillView['root'], string> = {
   dsh: '本地技能',
-  agents: '公共 Agent',
+  agents: '公共技能',
   preset: '由插件提供',
 }
 
@@ -407,7 +407,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
             className={tab === 'discover' ? 'dsc-tab is-active' : 'dsc-tab'}
             onClick={() => setTab('discover')}
           >
-            发现
+            市场
           </button>
         </nav>
 
@@ -530,10 +530,6 @@ const GROUP_ORDER: SkillView['root'][] = ['dsh', 'agents', 'preset']
 
 function InstalledTab(props: InstalledProps): JSX.Element {
   const { state, skills, loading, query, onQuery, writable, pending } = props
-  const rootPath = (key: SkillView['root']): string => {
-    if (key === 'preset') return '随插件安装，只读'
-    return state?.roots.find(root => root.key === key)?.path ?? ''
-  }
 
   if (loading && state === null) {
     return (
@@ -593,7 +589,6 @@ function InstalledTab(props: InstalledProps): JSX.Element {
                 {ROOT_LABELS[group.key]}
                 <span className="dsc-count">{group.items.length}</span>
               </h2>
-              <span className="dsc-section-path">{rootPath(group.key)}</span>
             </div>
             <div className="dsc-list">
               {group.items.map(skill => (
@@ -674,6 +669,7 @@ function SkillRow(props: {
         {skill.editable ? (
           <RowMenu
             name={skill.name}
+            market={Boolean(skill.catalog)}
             onOpen={() => props.onOpen(skill)}
             onDelete={() => props.onDelete(skill)}
           />
@@ -722,7 +718,7 @@ function Toggle(props: {
   )
 }
 
-function RowMenu(props: { name: string; onOpen: () => void; onDelete: () => void }): JSX.Element {
+function RowMenu(props: { name: string; market: boolean; onOpen: () => void; onDelete: () => void }): JSX.Element {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     if (!open) return undefined
@@ -766,7 +762,7 @@ function RowMenu(props: { name: string; onOpen: () => void; onDelete: () => void
             }}
           >
             <IconTrash size={14} />
-            删除
+            {props.market ? '卸载' : '删除'}
           </button>
         </div>
       ) : null}
@@ -840,7 +836,7 @@ function EmptyState(props: { title: string; hint: string; actions?: JSX.Element 
   )
 }
 
-// ── 发现 ────────────────────────────────────────────────────────────────────
+// ── 市场 ────────────────────────────────────────────────────────────────────
 
 function DiscoverTab(props: {
   version: number
@@ -1211,17 +1207,18 @@ function DeleteDialog(props: {
 }): JSX.Element {
   const { skill } = props
   const path = skill.copies[0]?.path ?? skill.path
+  const verb = skill.catalog ? '卸载' : '删除'
   return (
     <ConfirmDialog
-      title={`删除「${skill.name}」？`}
-      message="删除后它提供的功能会消失。"
+      title={`${verb}「${skill.name}」？`}
+      message={`${verb}后它提供的功能会消失。`}
       detail={path}
-      note={skill.root === 'agents' ? '该技能位于公共 Agent 目录，删除后其他工具也将无法使用。' : undefined}
-      confirmLabel="删除"
+      note={skill.root === 'agents' ? `该技能位于公共技能目录，${verb}后其他工具也将无法使用。` : undefined}
+      confirmLabel={verb}
       onClose={props.onClose}
       onConfirm={async () => {
         const result = await api<{ name: string; removed: string }>('/api/delete', { name: skill.name })
-        await props.onDeleted(`已删除 ${result.name}`)
+        await props.onDeleted(`已${verb} ${result.name}`)
       }}
     />
   )
@@ -1313,7 +1310,7 @@ function SkillPage(props: {
                 onClick={() => props.onDelete(view)}
               >
                 <IconTrash size={13} />
-                删除
+                {view.catalog ? '卸载' : '删除'}
               </button>
             ) : null}
             {busy ? (
@@ -1596,13 +1593,13 @@ function CreateDialog(props: {
   return (
     <DialogShell
       title="创建技能"
-      subtitle="先描述目标，创建器会问清细节再落盘"
       onClose={props.onClose}
       footer={
         <>
           <span className="dsc-foot-gap" />
           <button type="button" className="dsc-btn dsc-btn-outline" onClick={props.onClose}>
-            取消
+            <IconX size={14} />
+            关闭
           </button>
           <button type="button" className="dsc-btn dsc-btn-primary" disabled={!ready} onClick={submit}>
             <IconSpark size={14} />
@@ -1626,9 +1623,6 @@ function CreateDialog(props: {
           }}
         />
       </label>
-      <p className="dsc-field-hint">
-        会在新会话中打开 skill-center-creator，由它确认触发场景与约束后调用 skill_center_create，写入 ~/.dsh/skills。
-      </p>
     </DialogShell>
   )
 }
@@ -1886,7 +1880,8 @@ function UploadDialog(props: {
         <>
           <span className="dsc-foot-gap" />
           <button type="button" className="dsc-btn dsc-btn-outline" onClick={props.onClose}>
-            取消
+            <IconX size={14} />
+            关闭
           </button>
           <button
             type="button"
@@ -2238,9 +2233,8 @@ function installStyles(): void {
 .dsc-search-clear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsc-section{margin-bottom:20px}
 .dsc-section-head{display:flex;align-items:baseline;gap:8px;min-width:0;margin-bottom:4px}
-.dsc-section-head h2{margin:0;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
-.dsc-count{margin-left:6px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
-.dsc-section-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-caption)}
+.dsc-section-head h2{margin:0;font-size:14px;font-weight:500;line-height:22px;color:var(--dsw-alias-label-primary);white-space:nowrap}
+.dsc-count{margin-left:6px;font-size:12px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
 .dsc-list{display:flex;flex-direction:column;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1)}
 .dsc-row{display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:.5px solid var(--dsw-alias-border-l3);transition:background-color .15s}
 .dsc-row:last-child{border-bottom:0}
@@ -2335,7 +2329,6 @@ button.dsc-install-btn.is-remove:hover:not(:disabled){background:color-mix(in sr
 .dsc-foot-gap{flex:1}
 .dsc-foot-hint{min-width:0;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .dsc-dialog-desc{margin:0;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary)}
-.dsc-field-hint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .dsc-meta-list{display:flex;flex-direction:column;gap:8px;margin:0}
 .dsc-meta-list div{display:flex;gap:12px;min-width:0}
 .dsc-meta-list dt{flex:none;width:72px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}

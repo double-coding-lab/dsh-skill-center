@@ -29,10 +29,10 @@ DeepSeek Harness 的本机技能管理插件：在一个面板里查看、启停
 | 已安装 | 汇总 `~/.dsh/skills`、`~/.agents/skills` 和 agent preset 提供的技能，同名只显示一行 |
 | 启停 | 不修改任何 `SKILL.md`；策略写入本地账本，由插件发布一条低优先级覆盖生效 |
 | 详情 | 路径、全部副本、Markdown 渲染的 `SKILL.md` 正文、市场版本与本地修改状态 |
-| 删除 | 本地与公共 Agent 目录都可删；符号链接与 preset 技能不允许 |
+| 删除 | 本地与公共技能目录都可删；符号链接与 preset 技能不允许 |
 | 创建 | 面板输入一句话 → 新会话调用 `skill-center-creator` → 调工具落盘 |
 | 上传 | `.zip`、整个文件夹、单个 `SKILL.md`；校验路径、文件数、体积，冲突先确认 |
-| 发现 | ClawHub 下载榜、搜索、正文预览、安装 / 更新 / 卸载 |
+| 市场 | ClawHub 下载榜、搜索、正文预览、安装 / 更新 / 卸载 |
 
 ## 安装
 
@@ -71,7 +71,7 @@ DSH 默认沙箱为 `workspace-write`，模型的原生写文件工具无法写�
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `DSH_HOME` | `~/.dsh` | 可写技能根 `$DSH_HOME/skills` |
-| `DSH_AGENTS_HOME` | `~/.agents` | 公共 Agent 根 `$DSH_AGENTS_HOME/skills`（可查看、启停、删除，不在此新建） |
+| `DSH_AGENTS_HOME` | `~/.agents` | 公共技能根 `$DSH_AGENTS_HOME/skills`（可查看、启停、删除，不在此新建） |
 
 ## 安全边界
 

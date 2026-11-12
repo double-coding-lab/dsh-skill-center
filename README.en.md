@@ -29,10 +29,10 @@ A local skill manager plugin for DeepSeek Harness: inspect, enable, create and u
 | Installed | Lists `~/.dsh/skills`, `~/.agents/skills` and agent-preset skills; same-name copies collapse to one row |
 | Toggle | Never edits `SKILL.md`; the policy lives in a local ledger and is applied as a lower-rank override |
 | Detail | Paths, every copy, the Markdown-rendered `SKILL.md` body, catalog version and local modification state |
-| Delete | Works for local and shared Agent roots; symlinks and preset skills are refused |
+| Delete | Works for local and shared skill roots; symlinks and preset skills are refused |
 | Create | One sentence in the panel → a new session runs `skill-center-creator` → the tool writes the skill |
 | Upload | `.zip`, a folder, or a single `SKILL.md`; path, file-count and size checks; conflicts require confirmation |
-| Discover | ClawHub popular list, search, body preview, install / update / uninstall |
+| Market | ClawHub popular list, search, body preview, install / update / uninstall |
 
 ## Install
 
@@ -71,7 +71,7 @@ DSH defaults to the `workspace-write` sandbox, so the model's own file tools can
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DSH_HOME` | `~/.dsh` | Writable root `$DSH_HOME/skills` |
-| `DSH_AGENTS_HOME` | `~/.agents` | Shared Agent root `$DSH_AGENTS_HOME/skills` (list, toggle and delete; no new skills written here) |
+| `DSH_AGENTS_HOME` | `~/.agents` | Shared skill root `$DSH_AGENTS_HOME/skills` (list, toggle and delete; no new skills written here) |
 
 ## Security boundaries
 

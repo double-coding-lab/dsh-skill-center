@@ -48,7 +48,7 @@ export function localRoots(): RootDescriptor[] {
     },
     {
       key: 'agents',
-      label: '公共 Agent',
+      label: '公共技能',
       path: join(resolveAgentsHome(), 'skills'),
       rank: 450,
       writable: false,

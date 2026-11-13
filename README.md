@@ -69,16 +69,6 @@ dsh-skill-center 是 DeepSeek Harness 的技能面板：查看本机、公共和
 
 面板、市场、详情和弹窗跟随 DSH 设置里的中英文切换，切换后立即生效，不需要重开面板。
 
-## 创建链路
-
-1. 「添加 → 创建技能」输入目标。
-2. 面板调用 `uiWorkspace.startSession(undefined, { prompt, clearPreviousDraft: true })`，草稿为 `/skill-center-creator …`。
-3. `skill-center-creator` 问清用途、触发场景和约束，起名并写正文。
-4. 模型调用 `skill_center_create`，宿主校验后写入 `~/.dsh/skills/<name>/SKILL.md`。
-5. 面板刷新，出现新技能。
-
-DSH 默认沙箱是 `workspace-write`，模型的原生写文件工具到不了家目录，所以落盘由宿主工具完成。
-
 ## 安装
 
 要求：DeepSeek Harness 0.2.x。DSH Desktop 自带运行环境；用 `dsh` 命令安装时，Node.js 按 DSH 的要求准备。

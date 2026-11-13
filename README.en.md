@@ -69,16 +69,6 @@ Browse the ClawHub download chart, search, preview the body, then install, updat
 
 The panel, market, detail pages and dialogs follow the Chinese/English switch in DSH settings. Changes apply immediately, with no need to reopen the panel.
 
-## Creation flow
-
-1. Open "Add → Create skill" and enter a goal.
-2. The panel calls `uiWorkspace.startSession(undefined, { prompt, clearPreviousDraft: true })` with `/skill-center-creator …` as the draft.
-3. `skill-center-creator` asks about purpose, triggers and constraints, then names the skill and writes its body.
-4. The model calls `skill_center_create`; the host validates and writes `~/.dsh/skills/<name>/SKILL.md`.
-5. The panel refreshes and shows the new skill.
-
-DSH defaults to the `workspace-write` sandbox, so the model's own file tools cannot reach the home directory. The host tool performs the write.
-
 ## Install
 
 Requires DeepSeek Harness 0.2.x. DSH Desktop ships its own runtime; when installing through the `dsh` CLI, use the Node.js version DSH requires.

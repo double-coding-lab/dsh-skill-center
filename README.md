@@ -9,7 +9,7 @@
 <br>
 
 <div align="center" class="text-center">
-  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.1.0" src="./assets/readme/badges/npm.svg"></a>
+  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.1.1" src="./assets/readme/badges/npm.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center"><img alt="GitHub: double-coding-lab/dsh-skill-center" src="./assets/readme/badges/github.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center/blob/main/LICENSE"><img alt="MIT" src="./assets/readme/badges/mit.svg"></a>
   <img alt="DSH 0.2.x" src="./assets/readme/badges/dsh.svg">

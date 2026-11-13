@@ -9,7 +9,7 @@
 <br>
 
 <div align="center" class="text-center">
-  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.2.0" src="./assets/readme/badges/npm.svg"></a>
+  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.2.1" src="./assets/readme/badges/npm.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center"><img alt="GitHub: double-coding-lab/dsh-skill-center" src="./assets/readme/badges/github.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center/blob/main/LICENSE"><img alt="MIT" src="./assets/readme/badges/mit.svg"></a>
   <img alt="DSH 0.2.x" src="./assets/readme/badges/dsh.svg">
@@ -31,7 +31,11 @@ dsh-skill-center is the skill panel for DeepSeek Harness: list local, shared and
 
 ![The market tab in Skill Center](./assets/readme/panel-en.webp)
 
-The market tab shows the ClawHub download chart with search. You can read the `SKILL.md` body before installing.
+The market tab shows the ClawHub download chart with category artwork on every card. You can search and read the `SKILL.md` body before installing.
+
+![Changing a skill icon in Skill Center](./assets/readme/panel-icon-en.webp)
+
+The detail page can upload an image, pick a built-in glyph or reset to default; overrides are stored in the local ledger.
 
 ## What it does
 

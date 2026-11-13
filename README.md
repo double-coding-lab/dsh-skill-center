@@ -9,7 +9,7 @@
 <br>
 
 <div align="center" class="text-center">
-  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.2.0" src="./assets/readme/badges/npm.svg"></a>
+  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.2.1" src="./assets/readme/badges/npm.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center"><img alt="GitHub: double-coding-lab/dsh-skill-center" src="./assets/readme/badges/github.svg"></a>
   <a href="https://github.com/double-coding-lab/dsh-skill-center/blob/main/LICENSE"><img alt="MIT" src="./assets/readme/badges/mit.svg"></a>
   <img alt="DSH 0.2.x" src="./assets/readme/badges/dsh.svg">
@@ -31,7 +31,11 @@ dsh-skill-center 是 DeepSeek Harness 的技能面板：查看本机、公共和
 
 ![技能中心的市场页](./assets/readme/panel.webp)
 
-市场页展示 ClawHub 的下载榜，可搜索；安装前能先看 `SKILL.md` 正文。
+市场页展示 ClawHub 的下载榜，技能卡片带分类图标，可搜索；安装前能先看 `SKILL.md` 正文。
+
+![技能中心：更换技能图标](./assets/readme/panel-icon.webp)
+
+详情页可上传图片、选择内置图形或恢复默认，覆盖结果写入本地账本。
 
 ## 主要能力
 

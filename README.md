@@ -1,77 +1,131 @@
-# dsh-skill-center
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="dsh-skill-center：DeepSeek Harness 的本机技能管理器">
+</p>
 
-[English](./README.en.md) | 中文
+<div align="center" class="text-center">
+  <strong>简体中文</strong> · <a href="./README.en.md">English</a>
+</div>
 
-DeepSeek Harness 的本机技能管理插件：在一个面板里查看、启停、创建、上传技能，并从 ClawHub 安装。
+<br>
 
-<details>
-<summary>架构</summary>
+<div align="center" class="text-center">
+  <a href="https://www.npmjs.com/package/@double-coding/dsh-skill-center"><img alt="npm 0.1.0" src="./assets/readme/badges/npm.svg"></a>
+  <a href="https://github.com/double-coding-lab/dsh-skill-center"><img alt="GitHub: double-coding-lab/dsh-skill-center" src="./assets/readme/badges/github.svg"></a>
+  <a href="https://github.com/double-coding-lab/dsh-skill-center/blob/main/LICENSE"><img alt="MIT" src="./assets/readme/badges/mit.svg"></a>
+  <img alt="DSH 0.2.x" src="./assets/readme/badges/dsh.svg">
+</div>
 
-```text
-@double-coding/dsh-skill-center
-├── 宿主 apply(ctx)
-│   ├── skills.registerProvider            停用覆盖（rank 298）+ 内置 creator 技能（rank 350）
-│   ├── agent/created → 每个 agent 再注册一份   覆盖 preset 作用域里的同名技能
-│   ├── tools.register("skill_center_create") 把生成好的 SKILL.md 写入 ~/.dsh/skills
-│   ├── webServer.register("/dsh-skill-center") 面板 API
-│   └── storageDomain.open("dsh_skill_center")  策略与安装账本
-└── 客户端
-    ├── slots "main" + "sidebar.panellist"    技能中心面板
-    └── uiWorkspace.startSession({ prompt })  创建技能时预填会话
-```
+dsh-skill-center 是 DeepSeek Harness 的技能面板：查看本机、公共和插件提供的技能，启停、创建、导入，也能从 ClawHub 安装。
 
-</details>
+## 架构
 
-## 能力
+<p align="center">
+  <img src="./assets/readme/architecture.webp" width="100%" alt="dsh-skill-center 架构：面板、插件宿主、DSH 运行时与技能目录">
+</p>
 
-| | 说明 |
-| --- | --- |
-| 已安装 | 汇总 `~/.dsh/skills`、`~/.agents/skills` 和 agent preset 提供的技能，同名只显示一行 |
-| 启停 | 不修改任何 `SKILL.md`；策略写入本地账本，由插件发布一条低优先级覆盖生效 |
-| 详情 | 路径、全部副本、Markdown 渲染的 `SKILL.md` 正文、市场版本与本地修改状态 |
-| 删除 | 本地与公共技能目录都可删；符号链接与 preset 技能不允许 |
-| 创建 | 面板输入一句话 → 新会话调用 `skill-center-creator` → 调工具落盘 |
-| 上传 | `.zip`、整个文件夹、单个 `SKILL.md`；校验路径、文件数、体积，冲突先确认 |
-| 市场 | ClawHub 下载榜、搜索、正文预览、安装 / 更新 / 卸载 |
+- 面板通过 `/dsh-skill-center/api/*` 调插件宿主；客户端只传技能名和市场标识，路径由宿主重建。
+- 启停不写 `SKILL.md`：插件用自己的 skills provider 发布一条低优先级覆盖，把停用的技能压住。
+- 技能来自 `~/.dsh/skills`、`~/.agents/skills` 和 agent preset；ClawHub 提供下载榜、搜索与版本信息。
 
-## 安装
+## 界面与演示
 
-插件需要宿主提供 `skills` 服务；`tools`、`webServer`、`storageDomain` 缺失时对应能力降级，不影响启停。
+![技能中心的市场页](./assets/readme/panel.webp)
 
-```bash
-# 从 npm（DSH Desktop / web profile）
-dsh plugin --profile web add @double-coding/dsh-skill-center
+市场页展示 ClawHub 的下载榜，可搜索；安装前能先看 `SKILL.md` 正文。
 
-# 源码联调
-npm install
-npm run build
-dsh plugin --profile web add link:.
-```
+## 主要能力
 
-装好后重启 DSH，侧栏出现「技能中心」。
+### 一个列表看完所有技能
 
-## 启停为什么不用改文件
+同一份技能可能同时出现在本地目录、公共目录和 agent preset 里。面板按名字合并，只显示一行，详情页列出每个副本和实际路径。
 
-同一份 `SKILL.md` 会被 Codex、Qoder 等工具共用；改 frontmatter 会污染用户文件，卸载插件后也无法还原。插件改为在自己的 provider 里对已停用的名字发布一条 `modelInvocable=false`、`userInvocable=false`、`rank=298` 的候选，压住宿主原生 provider（用户级 400/450、preset 299），源文件字节不变。
+| 来源 | 位置 | 能做什么 |
+| --- | --- | --- |
+| 本地技能 | `~/.dsh/skills` | 查看、启停、创建、导入、删除 |
+| 公共技能 | `~/.agents/skills` | 查看、启停、删除 |
+| 插件技能 | 宿主注册的 skills provider | 只读 |
 
-agent preset 把技能 provider 挂在更近的 preset 层，全局注册遮不住它，因此插件在每个存活 agent 的 ctx 里再注册一份。
+### 启停不改源文件
+
+启停结果写进插件的本地策略账本，`SKILL.md` 一个字节都不动。同一份技能还会被 Codex、Qoder 之类的工具使用，改 frontmatter 会污染它们的配置，卸载插件后也退不回去。
+
+### 详情页
+
+路径、全部副本、Markdown 渲染的正文、市场版本与本地修改状态都在这里。符号链接技能会标明指向位置，只读且不能删除。
+
+### 创建技能
+
+在面板里输入一句话，插件会在新会话中打开 `skill-center-creator`，由它问清用途、触发场景和约束，再调用 `skill_center_create` 写到 `~/.dsh/skills`。
+
+### 导入技能
+
+支持 `.zip`、整个文件夹和单个 `SKILL.md`。导入前会检查相对路径、文件数和解压后体积；遇到同名技能先确认是否覆盖。
+
+### 市场
+
+浏览 ClawHub 下载榜、搜索、预览正文，安装、更新或卸载。市场安装的技能在列表和详情里都叫“卸载”，与普通删除区分开。
+
+### 跟随 DSH 语言
+
+面板、市场、详情和弹窗跟随 DSH 设置里的中英文切换，切换后立即生效，不需要重开面板。
+
+## 为什么启停不用改文件
+
+DSH 的技能 provider 有优先级。用户级技能由 400/450 一类的 provider 提供，preset 技能挂在更近的 299 层。插件为自己的 provider 声明 `rank=298`，对每个停用的名字发布一条 `modelInvocable=false`、`userInvocable=false` 的候选，压住宿主原生注册，但源文件保持不变。
+
+preset 把技能 provider 挂在更近的 preset 层，全局注册遮不住它，所以插件还会在每个存活 agent 的 ctx 里再注册一份。
 
 ## 创建链路
 
 1. 「添加 → 创建技能」输入目标。
 2. 面板调用 `uiWorkspace.startSession(undefined, { prompt, clearPreviousDraft: true })`，草稿为 `/skill-center-creator …`。
 3. `skill-center-creator` 问清用途、触发场景和约束，起名并写正文。
-4. 模型调用 `skill_center_create`，宿主侧校验后写入 `~/.dsh/skills/<name>/SKILL.md`。
-5. 面板刷新出现新技能。
+4. 模型调用 `skill_center_create`，宿主校验后写入 `~/.dsh/skills/<name>/SKILL.md`。
+5. 面板刷新，出现新技能。
 
-DSH 默认沙箱为 `workspace-write`，模型的原生写文件工具无法写入家目录，所以落盘必须由宿主工具完成。
+DSH 默认沙箱是 `workspace-write`，模型的原生写文件工具到不了家目录，所以落盘由宿主工具完成。
+
+## 安装
+
+要求：DeepSeek Harness 0.2.x。DSH Desktop 自带运行环境；用 `dsh` 命令安装时，Node.js 按 DSH 的要求准备。
+
+### DSH Desktop
+
+打开「设置 → 插件」，点「添加插件」，输入包名 `@double-coding/dsh-skill-center`，按提示安装。
+
+Desktop 的 profile 由应用管理。安装完成后完全退出并重新启动 Desktop。
+
+### dsh web
+
+```bash
+dsh plugin --profile web add @double-coding/dsh-skill-center
+```
+
+装完先停掉原来的 `dsh web` 进程再启动；只刷新网页不会加载后端插件。
+
+<details>
+<summary>从源码安装</summary>
+
+```bash
+npm install
+npm run build
+dsh plugin --profile <profile> add link:.
+```
+
+`<profile>` 换成宿主实际加载的 profile，装完同样需要重启。
+
+</details>
+
+### 打开面板
+
+侧栏出现「技能中心」，里面分「已安装」和「市场」两个标签。
 
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `DSH_HOME` | `~/.dsh` | 可写技能根 `$DSH_HOME/skills` |
-| `DSH_AGENTS_HOME` | `~/.agents` | 公共技能根 `$DSH_AGENTS_HOME/skills`（可查看、启停、删除，不在此新建） |
+| `DSH_AGENTS_HOME` | `~/.agents` | 公共技能根 `$DSH_AGENTS_HOME/skills`；可查看、启停、删除，不在这里新建 |
 
 ## 安全边界
 
@@ -79,7 +133,7 @@ DSH 默认沙箱为 `workspace-write`，模型的原生写文件工具无法写�
 - 路径由服务端重建，客户端只传技能名和 `owner`/`slug`。
 - zip 校验相对路径、深度 ≤ 8、文件数 ≤ 500、解压总量 ≤ 64 MiB。
 - 市场内容是第三方提示词：安装前展示正文，不自动安装，不执行技能内脚本。
-- 策略存储不可读时 fail-closed：视为全部停用并禁止写入。
+- 策略存储不可读时按全部停用处理，并禁止写入。
 
 ## 开发
 
@@ -90,12 +144,10 @@ npm test            # 名称、frontmatter、zip、策略、provider 候选
 npm run check       # 以上全部
 ```
 
-参考实现只用于核对宿主契约与交互，不包含其仓库订阅、备份回退等模块。
-
 ## 第三方
 
 `skills/skill-center-creator` 取自 [anthropics/skills](https://github.com/anthropics/skills) 的 `skill-creator`，按 Apache-2.0 使用，许可证见该目录下的 `LICENSE.txt`。改动限于 frontmatter 名称，以及补充 DeepSeek Harness 的落盘与环境说明。
 
 ## License
 
-MIT
+[MIT](./LICENSE)

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="hero-title hero-desc" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="hero-title">dsh-skill-center — local skill manager for DeepSeek Harness</title>
+  <desc id="hero-desc">Inspect, toggle, create and upload skills in the DeepSeek Harness sidebar, and install them from ClawHub.</desc>
+
+  <defs>
+    <linearGradient id="glow-a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1C2A2A"/>
+      <stop offset="1" stop-color="#0B0D10"/>
+    </linearGradient>
+    <linearGradient id="glow-b" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#17202B"/>
+      <stop offset="1" stop-color="#0B0D10"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" rx="26" fill="#0B0D10"/>
+  <circle cx="110" cy="30" r="220" fill="url(#glow-a)" opacity=".5"/>
+  <circle cx="1130" cy="400" r="240" fill="url(#glow-b)" opacity=".55"/>
+
+  <g id="title-block">
+    <text x="64" y="86" fill="#7F8996" font-size="15" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" letter-spacing="2">DEEPSEEK HARNESS · SKILL PLUGIN</text>
+    <text x="64" y="166" fill="#F7F8FA" font-size="58" font-weight="700" letter-spacing="-1">dsh-skill-center</text>
+    <text x="64" y="224" fill="#C9D0D9" font-size="24">Local skill manager for DeepSeek Harness</text>
+    <line x1="64" y1="312" x2="628" y2="312" stroke="#242A32" stroke-width="1"/>
+    <text x="64" y="340" fill="#6F7884" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">local skills · shared skills · plugin skills · ClawHub</text>
+  </g>
+
+  <g id="panel-proof">
+    <rect x="672" y="56" width="464" height="308" rx="22" fill="#11151A" stroke="#262C34"/>
+    <text x="700" y="96" fill="#F4F6F8" font-size="20" font-weight="600">Skill Center</text>
+    <circle cx="1096" cy="88" r="14" fill="#FFFFFF"/>
+    <path d="M1096 82v12M1090 88h12" stroke="#11151A" stroke-width="1.6" stroke-linecap="round"/>
+
+    <rect x="700" y="112" width="86" height="26" rx="13" fill="#22282F"/>
+    <text x="718" y="130" fill="#F4F6F8" font-size="13" font-weight="500">Installed</text>
+    <text x="800" y="130" fill="#79828E" font-size="13">Market</text>
+
+    <rect x="700" y="146" width="408" height="30" rx="9" fill="#0C1014" stroke="#242A32"/>
+    <circle cx="716" cy="161" r="5" fill="none" stroke="#6F7884" stroke-width="1.4"/>
+    <line x1="720" y1="165" x2="724" y2="169" stroke="#6F7884" stroke-width="1.4" stroke-linecap="round"/>
+    <text x="734" y="166" fill="#79828E" font-size="13">Search skills</text>
+
+    <text x="700" y="198" fill="#7F8996" font-size="12" font-weight="500">Local skills</text>
+
+    <g id="row-0">
+      <rect x="690" y="206" width="428" height="34" rx="9" fill="#0E1217"/>
+      <text x="702" y="222" fill="#F4F6F8" font-size="13" font-weight="600">beautiful-article</text>
+      <text x="702" y="234" fill="#79828E" font-size="10">Turn source material into one offline HTML article</text>
+      <rect x="1060" y="213" width="32" height="18" rx="9" fill="#FFFFFF"/>
+      <circle cx="1083" cy="222" r="7" fill="#11151A"/>
+    </g>
+
+    <g id="row-1">
+      <rect x="690" y="246" width="428" height="34" rx="9" fill="#0E1217"/>
+      <text x="702" y="262" fill="#F4F6F8" font-size="13" font-weight="600">self-improving-agent</text>
+      <rect x="830" y="250" width="44" height="17" rx="8.5" fill="#161C23" stroke="#2A313A"/>
+      <text x="852" y="262" fill="#A7B0BC" font-size="10" text-anchor="middle">Market</text>
+      <text x="702" y="274" fill="#79828E" font-size="10">Keep corrections and read them before big tasks</text>
+      <rect x="1060" y="253" width="32" height="18" rx="9" fill="#FFFFFF"/>
+      <circle cx="1083" cy="262" r="7" fill="#11151A"/>
+    </g>
+
+    <g id="row-2">
+      <rect x="690" y="286" width="428" height="34" rx="9" fill="#0E1217"/>
+      <text x="702" y="302" fill="#F4F6F8" font-size="13" font-weight="600">skill-center-creator</text>
+      <text x="702" y="314" fill="#79828E" font-size="10">Asks about purpose and triggers, then writes SKILL.md</text>
+      <rect x="1060" y="293" width="32" height="18" rx="9" fill="#2A313A"/>
+      <circle cx="1069" cy="302" r="7" fill="#8A94A0"/>
+    </g>
+
+    <text x="700" y="342" fill="#7F8996" font-size="12" font-weight="500">Provided by plugins</text>
+  </g>
+</svg>

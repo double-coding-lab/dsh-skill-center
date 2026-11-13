@@ -35,6 +35,7 @@ export interface StorageFace {
 }
 
 export interface DomainHandle {
+  close?: () => Promise<void>
   table(name: 'policy'): TableHandle<string, PolicyRecord>
   table(name: 'catalog_installs'): TableHandle<string, CatalogInstall>
 }
@@ -93,6 +94,13 @@ export class SkillStore {
 
   async ready(): Promise<void> {
     await this.open()
+  }
+
+  async close(): Promise<void> {
+    const domain = this.domain
+    this.domain = null
+    this.opened = false
+    if (typeof domain?.close === 'function') await domain.close().catch(() => undefined)
   }
 
   private policyTable(): TableHandle<string, PolicyRecord> | null {

@@ -3,6 +3,8 @@ import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { bindLocale, currentLocale, tr, useLocaleRevision } from './i18n.js'
+import { HOST_ERROR_EN } from './en.js'
 import { PANEL_ID, ROUTE_PREFIX } from '../shared/types.js'
 import type {
   ApiEnvelope,
@@ -23,11 +25,17 @@ const SEARCH_DEBOUNCE_MS = 320
 const MAX_UPLOAD_FILES = 500
 const MAX_UPLOAD_BYTES = 64 << 20
 
-const ROOT_LABELS: Record<SkillView['root'], string> = {
+const ROOT_LABEL_KEYS: Record<SkillView['root'], string> = {
   dsh: '本地技能',
   agents: '公共技能',
   preset: '由插件提供',
 }
+
+function rootLabel(key: SkillView['root']): string {
+  return tr(ROOT_LABEL_KEYS[key])
+}
+
+export const inject: string[] = ['locale']
 
 interface SlotsFace {
   inject: (name: string, callback: () => unknown) => unknown
@@ -57,7 +65,7 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   try {
     payload = (await response.json()) as ApiEnvelope<T>
   } catch {
-    throw new ApiError('internal_error', `请求失败（HTTP ${response.status}）`)
+    throw new ApiError('internal_error', tr('请求失败（HTTP {status}）', { status: response.status }))
   }
   if (!payload.ok) throw new ApiError(payload.error.code, payload.error.message)
   return payload.value
@@ -66,6 +74,44 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+const WARNING_PREFIX = '技能策略读取失败：'
+
+function localizedWarning(warning: string): string {
+  if (warning.startsWith(WARNING_PREFIX)) {
+    return tr('技能策略读取失败：{detail}', { detail: warning.slice(WARNING_PREFIX.length) })
+  }
+  return tr(warning)
+}
+
+const HOST_ERROR_PATTERNS: Array<[RegExp, string]> = [
+  [/^非法技能名：(.+)$/u, 'Invalid skill name: $1'],
+  [/^技能不存在：(.+)$/u, 'Skill not found: $1'],
+  [/^同名技能已存在：(.+)$/u, 'A skill with this name already exists: $1'],
+  [/^无法生成合法 kebab-case 名称：(.+)$/u, 'Cannot derive a valid kebab-case name from: $1'],
+  [/^附属文件路径非法：(.+)$/u, 'Invalid supporting file path: $1'],
+  [/^附属文件过大：(.+)$/u, 'Supporting file too large: $1'],
+  [/^附属文件数量超出限制（(\d+)）$/u, 'Too many supporting files (limit $1)'],
+  [/^压缩包包含非法路径：(.+)$/u, 'Archive contains an unsafe path: $1'],
+  [/^单文件过大：(.+)$/u, 'File too large: $1'],
+  [/^文件数量超出限制（(\d+)）$/u, 'Too many files (limit $1)'],
+  [/^ClawHub 返回 (\d+)$/u, 'ClawHub returned $1'],
+  [
+    /^该市场条目已安装为 (.+)，与当前名称 (.+) 不一致$/u,
+    'This market item is already installed as $1, which differs from $2',
+  ],
+]
+
+function localizedErrorText(error: unknown): string {
+  const message = errorText(error)
+  if (!currentLocale().toLowerCase().startsWith('en')) return message
+  const exact = HOST_ERROR_EN[message]
+  if (exact !== undefined) return exact
+  for (const [pattern, template] of HOST_ERROR_PATTERNS) {
+    if (pattern.test(message)) return message.replace(pattern, template)
+  }
+  return message
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -117,8 +163,8 @@ async function readEntry(
   const fileEntry = entry as FileSystemFileEntry
   const file = await new Promise<File>((resolve, reject) => fileEntry.file(resolve, reject))
   state.total += file.size
-  if (state.total > MAX_UPLOAD_BYTES) throw new Error('解压后总大小超过 64 MB 上限')
-  if (entries.length >= MAX_UPLOAD_FILES) throw new Error(`文件数量超过 ${MAX_UPLOAD_FILES} 上限`)
+  if (state.total > MAX_UPLOAD_BYTES) throw new Error(tr('解压后总大小超过 64 MB 上限'))
+  if (entries.length >= MAX_UPLOAD_FILES) throw new Error(tr('文件数量超过 {max} 上限', { max: MAX_UPLOAD_FILES }))
   entries.push({ path, data: bytesToBase64(await fileBytes(file)) })
 }
 
@@ -153,8 +199,8 @@ async function readDirectoryHandle(
     }
     const file = await child.getFile()
     state.total += file.size
-    if (state.total > MAX_UPLOAD_BYTES) throw new Error('解压后总大小超过 64 MB 上限')
-    if (entries.length >= MAX_UPLOAD_FILES) throw new Error(`文件数量超过 ${MAX_UPLOAD_FILES} 上限`)
+    if (state.total > MAX_UPLOAD_BYTES) throw new Error(tr('解压后总大小超过 64 MB 上限'))
+    if (entries.length >= MAX_UPLOAD_FILES) throw new Error(tr('文件数量超过 {max} 上限', { max: MAX_UPLOAD_FILES }))
     entries.push({ path, data: bytesToBase64(await fileBytes(file)) })
   }
 }
@@ -167,9 +213,9 @@ function formatBytes(size: number): string {
 
 function formatDownloads(value: number | undefined): string {
   if (value === undefined) return ''
-  if (value < 1000) return `${value} 次下载`
-  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k 次下载`
-  return `${(value / 1_000_000).toFixed(1)}M 次下载`
+  if (value < 1000) return tr('{value} 次下载', { value })
+  if (value < 1_000_000) return tr('{value}k 次下载', { value: (value / 1000).toFixed(1) })
+  return tr('{value}M 次下载', { value: (value / 1_000_000).toFixed(1) })
 }
 
 function matches(skill: SkillView, keyword: string): boolean {
@@ -189,18 +235,19 @@ export function apply(ctx: Context): () => void {
 
 function applyInner(ctx: Context): () => void {
   installStyles()
+  bindLocale((ctx as Context & { locale?: import('./i18n.js').LocaleFace }).locale)
   const get = (ctx as Context & { get?: (name: string) => unknown }).get?.bind(ctx)
   let disposed = false
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const startCreate = (description: string): void => {
     const workspace = get?.('uiWorkspace') as WorkspaceFace | undefined
-    const prompt = `/skill-center-creator 请帮我创建一个技能：${description.trim()}`
+    const prompt = tr('/skill-center-creator 请帮我创建一个技能：{desc}', { desc: description.trim() })
     if (workspace && typeof workspace.startSession === 'function') {
       workspace.startSession(undefined, { prompt, clearPreviousDraft: true })
       return
     }
-    throw new ApiError('internal_error', '当前 DSH 版本不支持从面板打开会话')
+    throw new ApiError('internal_error', tr('当前 DSH 版本不支持从面板打开会话'))
   }
 
   const mount = (round: number): void => {
@@ -216,7 +263,7 @@ function applyInner(ctx: Context): () => void {
         slots.register({ name: 'main', key: PANEL_ID }, () => <Panel onCreate={startCreate} />),
       )
       slots.inject('sidebar.panellist', () =>
-        slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 24, label: () => '技能中心' }, PanelIcon),
+        slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 24, label: () => tr('技能中心') }, PanelIcon),
       )
     } catch (error) {
       console.error('[dsh-skill-center] panel registration failed', error)
@@ -246,6 +293,7 @@ type Route =
   | { kind: 'catalog'; item: CatalogItem }
 
 function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.Element {
+  useLocaleRevision()
   const [tab, setTab] = useState<Tab>('installed')
   const [state, setState] = useState<StatePayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -266,7 +314,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
       setState(next)
       setBanner(null)
     } catch (error) {
-      setBanner(errorText(error))
+      setBanner(localizedErrorText(error))
     } finally {
       setLoading(false)
       if (!quiet) setRefreshing(false)
@@ -309,7 +357,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
           : current,
       )
     } catch (error) {
-      setBanner(errorText(error))
+      setBanner(localizedErrorText(error))
     } finally {
       mark(skill.name, false)
     }
@@ -327,7 +375,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
             <>
         <header className="dsc-head">
           <div className="dsc-head-title">
-            <h1>技能中心</h1>
+            <h1>{tr('技能中心')}</h1>
           </div>
           <div className="dsc-head-actions">
             <button
@@ -337,7 +385,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
               disabled={refreshing}
             >
               {refreshing ? <Spinner size={14} /> : <IconRefresh size={14} />}
-              刷新
+              {tr('刷新')}
             </button>
             <div className="dsc-add">
               <button
@@ -351,7 +399,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
                 }}
               >
                 <IconPlus size={14} />
-                添加
+                {tr('添加')}
                 <IconChevron size={12} />
               </button>
               {addOpen ? (
@@ -368,7 +416,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
                       }}
                     >
                       <IconUpload size={14} />
-                      上传技能
+                      {tr('上传技能')}
                     </button>
                     <button
                       type="button"
@@ -380,7 +428,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
                       }}
                     >
                       <IconSpark size={14} />
-                      创建技能
+                      {tr('创建技能')}
                     </button>
                   </div>
                 </>
@@ -389,7 +437,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
           </div>
         </header>
 
-        <nav className="dsc-tabs" role="tablist" aria-label="技能中心视图">
+        <nav className="dsc-tabs" role="tablist" aria-label={tr('技能中心视图')}>
           <button
             type="button"
             role="tab"
@@ -397,7 +445,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
             className={tab === 'installed' ? 'dsc-tab is-active' : 'dsc-tab'}
             onClick={() => setTab('installed')}
           >
-            已安装
+            {tr('已安装')}
             {state ? <span className="dsc-tab-count">{skills.length}</span> : null}
           </button>
           <button
@@ -407,13 +455,15 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
             className={tab === 'discover' ? 'dsc-tab is-active' : 'dsc-tab'}
             onClick={() => setTab('discover')}
           >
-            市场
+            {tr('市场')}
           </button>
         </nav>
 
         {banner ? <div className="dsc-banner is-error">{banner}</div> : null}
-        {state?.warning ? <div className="dsc-banner is-warn">{state.warning}</div> : null}
-        {state?.truncated ? <div className="dsc-banner is-warn">技能数量超过扫描上限，列表已截断。</div> : null}
+        {state?.warning ? <div className="dsc-banner is-warn">{localizedWarning(state.warning)}</div> : null}
+        {state?.truncated ? (
+          <div className="dsc-banner is-warn">{tr('技能数量超过扫描上限，列表已截断。')}</div>
+        ) : null}
 
         {tab === 'installed' ? (
           <InstalledTab
@@ -488,7 +538,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
           onCreate={description => {
             onCreate(description)
             setDialog(null)
-            setToast('已在新会话中打开技能创建器')
+            setToast(tr('已在新会话中打开技能创建器'))
           }}
         />
       ) : null}
@@ -499,7 +549,7 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
           onDone={async name => {
             setDialog(null)
             await refresh(true)
-            setToast(`已导入 ${name}`)
+            setToast(tr('已导入 {name}', { name }))
           }}
         />
       ) : null}
@@ -535,7 +585,7 @@ function InstalledTab(props: InstalledProps): JSX.Element {
     return (
       <div className="dsc-loading">
         <Spinner size={18} />
-        正在读取技能目录
+        {tr('正在读取技能目录')}
       </div>
     )
   }
@@ -549,23 +599,23 @@ function InstalledTab(props: InstalledProps): JSX.Element {
   return (
     <div className="dsc-pane">
       {total > 0 ? (
-        <SearchBox value={query} onChange={onQuery} placeholder="搜索技能名称或描述" />
+        <SearchBox value={query} onChange={onQuery} placeholder={tr('搜索技能名称或描述')} />
       ) : null}
 
       {total === 0 ? (
         <EmptyState
-          title="还没有本地技能"
-          hint={writable ? '上传一个技能包，或让 AI 帮你写一个。' : '当前为只读模式，无法写入技能目录。'}
+          title={tr('还没有本地技能')}
+          hint={writable ? tr('上传一个技能包，或让 AI 帮你写一个。') : tr('当前为只读模式，无法写入技能目录。')}
           actions={
             writable ? (
               <>
                 <button type="button" className="dsc-btn dsc-btn-outline" onClick={props.onUpload}>
                   <IconUpload size={14} />
-                  上传技能
+                  {tr('上传技能')}
                 </button>
                 <button type="button" className="dsc-btn dsc-btn-primary" onClick={props.onCreate}>
                   <IconSpark size={14} />
-                  创建技能
+                  {tr('创建技能')}
                 </button>
               </>
             ) : null
@@ -573,11 +623,11 @@ function InstalledTab(props: InstalledProps): JSX.Element {
         />
       ) : groups.length === 0 ? (
         <EmptyState
-          title="没有匹配的技能"
-          hint={`没有找到包含「${query.trim()}」的技能。`}
+          title={tr('没有匹配的技能')}
+          hint={tr('没有找到包含「{query}」的技能。', { query: query.trim() })}
           actions={
             <button type="button" className="dsc-btn dsc-btn-outline" onClick={() => onQuery('')}>
-              清除搜索
+              {tr('清除搜索')}
             </button>
           }
         />
@@ -586,7 +636,7 @@ function InstalledTab(props: InstalledProps): JSX.Element {
           <section className="dsc-section" key={group.key}>
             <div className="dsc-section-head">
               <h2>
-                {ROOT_LABELS[group.key]}
+                {rootLabel(group.key)}
                 <span className="dsc-count">{group.items.length}</span>
               </h2>
             </div>
@@ -623,7 +673,7 @@ function SkillRow(props: {
   if (skill.catalog) {
     badges.push(
       <span className="dsc-badge is-market" key="market">
-        市场
+        {tr('市场')}
         {skill.catalog.updateAvailable ? <i className="dsc-dot" /> : null}
       </span>,
     )
@@ -631,14 +681,14 @@ function SkillRow(props: {
   if (!skill.loadable) {
     badges.push(
       <span className="dsc-badge is-warn" key="broken">
-        结构不完整
+        {tr('结构不完整')}
       </span>,
     )
   }
   if (skill.linked) {
     badges.push(
       <span className="dsc-badge" key="link">
-        符号链接
+        {tr('符号链接')}
       </span>,
     )
   }
@@ -650,7 +700,7 @@ function SkillRow(props: {
           <strong>{skill.name}</strong>
           {badges}
         </span>
-        <span className="dsc-row-desc">{skill.description || '没有描述'}</span>
+        <span className="dsc-row-desc">{skill.description || tr('没有描述')}</span>
       </button>
 
       <div className="dsc-row-actions">
@@ -662,7 +712,10 @@ function SkillRow(props: {
           <Toggle
             checked={skill.enabled}
             disabled={!writable}
-            label={`${skill.enabled ? '停用' : '启用'} ${skill.name}`}
+            label={tr('{action} {name}', {
+              action: tr(skill.enabled ? '停用' : '启用'),
+              name: skill.name,
+            })}
             onChange={enabled => void props.onToggle(skill, enabled)}
           />
         )}
@@ -679,20 +732,22 @@ function SkillRow(props: {
   )
 }
 
-const MARKDOWN_LABELS = {
-  code: {
-    copyLabel: '复制',
-    copiedLabel: '已复制',
-    toolbarLabels: { codeLabel: '代码', wrapLabel: '自动换行', unwrapLabel: '取消换行' },
-  },
-  footnotes: '脚注',
+function markdownLabels() {
+  return {
+    code: {
+      copyLabel: tr('复制'),
+      copiedLabel: tr('已复制'),
+      toolbarLabels: { codeLabel: tr('代码'), wrapLabel: tr('自动换行'), unwrapLabel: tr('取消换行') },
+    },
+    footnotes: tr('脚注'),
+  }
 }
 
 function MarkdownPreview({ text }: { text: string }): JSX.Element {
-  if (!text.trim()) return <p className="dsc-note">没有正文。</p>
+  if (!text.trim()) return <p className="dsc-note">{tr('没有正文。')}</p>
   return (
     <div className="dsc-md">
-      <MarkdownText text={text} variant="body" omitHtml labels={MARKDOWN_LABELS} />
+      <MarkdownText text={text} variant="body" omitHtml labels={markdownLabels()} />
     </div>
   )
 }
@@ -730,7 +785,7 @@ function RowMenu(props: { name: string; market: boolean; onOpen: () => void; onD
   return (
     <div className="dsc-row-menu">
       <IconButton
-        label={`${props.name} 的操作`}
+        label={tr('{name} 的操作', { name: props.name })}
         active={open}
         onClick={event => {
           event.stopPropagation()
@@ -750,7 +805,7 @@ function RowMenu(props: { name: string; market: boolean; onOpen: () => void; onD
             }}
           >
             <IconInfo size={14} />
-            查看详情
+            {tr('查看详情')}
           </button>
           <button
             type="button"
@@ -762,7 +817,7 @@ function RowMenu(props: { name: string; market: boolean; onOpen: () => void; onD
             }}
           >
             <IconTrash size={14} />
-            {props.market ? '卸载' : '删除'}
+            {tr(props.market ? '卸载' : '删除')}
           </button>
         </div>
       ) : null}
@@ -812,7 +867,7 @@ function SearchBox(props: {
         <button
           type="button"
           className="dsc-search-clear"
-          aria-label="清空搜索"
+          aria-label={tr('清空搜索')}
           onMouseDown={event => event.preventDefault()}
           onClick={() => props.onChange('')}
         >
@@ -877,7 +932,7 @@ function DiscoverTab(props: {
         setInstalled(payload.installed)
         setCursor(payload.nextCursor)
       } catch (caught) {
-        if (seq.current === id) setError(errorText(caught))
+        if (seq.current === id) setError(localizedErrorText(caught))
       } finally {
         if (seq.current === id) setLoading(false)
       }
@@ -899,7 +954,7 @@ function DiscoverTab(props: {
       setInstalled(payload.installed)
       setCursor(payload.nextCursor)
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setMore(false)
     }
@@ -914,9 +969,9 @@ function DiscoverTab(props: {
         slug: item.slug,
       })
       setInstalled(current => (current.includes(item.key) ? current : [...current, item.key]))
-      props.onInstalled(`已安装 ${result.name} ${result.version}`)
+      props.onInstalled(tr('已安装 {name} {version}', { name: result.name, version: result.version }))
     } catch (caught) {
-      props.onNotify(errorText(caught))
+      props.onNotify(localizedErrorText(caught))
     } finally {
       setPending(current => {
         const next = { ...current }
@@ -932,7 +987,7 @@ function DiscoverTab(props: {
       slug: item.slug,
     })
     setInstalled(current => current.filter(key => key !== item.key))
-    props.onInstalled(`已卸载 ${result.name}`)
+    props.onInstalled(tr('已卸载 {name}', { name: result.name }))
   }
 
   const searching = applied.length >= 2
@@ -941,13 +996,13 @@ function DiscoverTab(props: {
 
   return (
     <div className="dsc-pane">
-      <SearchBox value={query} onChange={setQuery} placeholder="搜索技能" />
+      <SearchBox value={query} onChange={setQuery} placeholder={tr('搜索技能')} />
 
       {error ? (
         <div className="dsc-banner is-error">
           {error}
           <button type="button" className="dsc-link" onClick={() => setRetry(current => current + 1)}>
-            重试
+            {tr('重试')}
           </button>
         </div>
       ) : null}
@@ -955,25 +1010,20 @@ function DiscoverTab(props: {
       {busyNow ? (
         <div className="dsc-loading">
           <Spinner size={18} />
-          {typingSearch ? '正在搜索' : '正在加载榜单'}
-        </div>
-      ) : items.length === 0 ? (
-        <div className="dsc-loading">
-          <Spinner size={18} />
-          {searching ? '正在搜索' : '正在加载榜单'}
+          {tr(typingSearch ? '正在搜索' : '正在加载榜单')}
         </div>
       ) : items.length === 0 ? (
         <EmptyState
-          title={searching ? '没有找到相关技能' : '榜单暂时为空'}
-          hint={searching ? `没有匹配「${applied}」的技能。` : '稍后再试，或检查网络连接。'}
+          title={tr(searching ? '没有找到相关技能' : '榜单暂时为空')}
+          hint={searching ? tr('没有匹配「{query}」的技能。', { query: applied }) : tr('稍后再试，或检查网络连接。')}
           actions={
             searching ? (
               <button type="button" className="dsc-btn dsc-btn-outline" onClick={() => setQuery('')}>
-                清除搜索
+                {tr('清除搜索')}
               </button>
             ) : (
               <button type="button" className="dsc-btn dsc-btn-outline" onClick={() => setRetry(current => current + 1)}>
-                重新加载
+                {tr('重新加载')}
               </button>
             )
           }
@@ -997,7 +1047,7 @@ function DiscoverTab(props: {
             <div className="dsc-more">
               <button type="button" className="dsc-btn dsc-btn-outline" disabled={more} onClick={() => void loadMore()}>
                 {more ? <Spinner size={14} /> : null}
-                {more ? '正在加载' : '加载更多'}
+                {tr(more ? '正在加载' : '加载更多')}
               </button>
             </div>
           ) : null}
@@ -1006,9 +1056,9 @@ function DiscoverTab(props: {
 
       {removing ? (
         <ConfirmDialog
-          title={`卸载「${removing.title}」？`}
-          message="卸载后它提供的功能会消失。"
-          confirmLabel="卸载"
+          title={tr('卸载「{name}」？', { name: removing.title })}
+          message={tr('卸载后它提供的功能会消失。')}
+          confirmLabel={tr('卸载')}
           onClose={() => setRemoving(null)}
           onConfirm={() => uninstall(removing)}
         />
@@ -1032,7 +1082,7 @@ function CatalogCard(props: {
       className="dsc-card"
       role="button"
       tabIndex={0}
-      aria-label={`查看 ${item.title}`}
+      aria-label={tr('查看 {name}', { name: item.title })}
       onClick={props.onOpen}
       onKeyDown={event => {
         if (event.target !== event.currentTarget) return
@@ -1050,20 +1100,20 @@ function CatalogCard(props: {
         </span>
         {item.version ? <span className="dsc-badge dsc-card-version">{item.version}</span> : null}
       </span>
-      <span className="dsc-card-summary">{item.summary || '没有摘要'}</span>
+      <span className="dsc-card-summary">{item.summary || tr('没有摘要')}</span>
       <span className="dsc-card-foot">
         <span className="dsc-card-meta">{formatDownloads(item.downloads)}</span>
         <span className="dsc-card-badges">
           {props.installed ? (
             <span className="dsc-card-installed">
-              <span className="dsc-install-btn is-done" role="img" aria-label={`已安装 ${item.title}`}>
+              <span className="dsc-install-btn is-done" role="img" aria-label={tr('已安装 {name}', { name: item.title })}>
                 <IconCheck size={16} />
               </span>
               <span className="dsc-card-uninstall">
                 <button
                   type="button"
                   className="dsc-install-btn is-remove"
-                  aria-label={`卸载 ${item.title}`}
+                  aria-label={tr('卸载 {name}', { name: item.title })}
                   onClick={event => {
                     event.stopPropagation()
                     props.onUninstall()
@@ -1077,7 +1127,7 @@ function CatalogCard(props: {
             <button
               type="button"
               className={props.installing ? 'dsc-install-btn is-busy' : 'dsc-install-btn'}
-              aria-label={`安装 ${item.title}`}
+              aria-label={tr('安装 {name}', { name: item.title })}
               disabled={props.installing}
               onClick={event => {
                 event.stopPropagation()
@@ -1133,7 +1183,7 @@ function DialogShell(props: {
           </div>
           <div className="dsc-dialog-head-actions">
             {props.headerExtra}
-            <IconButton label="关闭" className="dsc-dialog-close" onClick={props.onClose}>
+            <IconButton label={tr('关闭')} className="dsc-dialog-close" onClick={props.onClose}>
               <IconX size={14} />
             </IconButton>
           </div>
@@ -1165,7 +1215,7 @@ function ConfirmDialog(props: {
       await props.onConfirm()
       props.onClose()
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
       setBusy(false)
     }
   }
@@ -1178,7 +1228,7 @@ function ConfirmDialog(props: {
       footer={
         <>
           <button type="button" className="dsc-btn dsc-btn-outline" disabled={busy} onClick={props.onClose}>
-            取消
+            {tr('取消')}
           </button>
           <button
             type="button"
@@ -1187,7 +1237,7 @@ function ConfirmDialog(props: {
             onClick={() => void run()}
           >
             {busy ? <Spinner size={14} /> : null}
-            {busy ? '正在处理' : props.confirmLabel}
+            {busy ? tr('正在处理') : props.confirmLabel}
           </button>
         </>
       }
@@ -1207,18 +1257,23 @@ function DeleteDialog(props: {
 }): JSX.Element {
   const { skill } = props
   const path = skill.copies[0]?.path ?? skill.path
-  const verb = skill.catalog ? '卸载' : '删除'
+  const market = Boolean(skill.catalog)
+  const verb = tr(market ? '卸载' : '删除')
   return (
     <ConfirmDialog
-      title={`${verb}「${skill.name}」？`}
-      message={`${verb}后它提供的功能会消失。`}
+      title={tr('{verb}「{name}」？', { verb, name: skill.name })}
+      message={tr(market ? '卸载后它提供的功能会消失。' : '删除后它提供的功能会消失。')}
       detail={path}
-      note={skill.root === 'agents' ? `该技能位于公共技能目录，${verb}后其他工具也将无法使用。` : undefined}
+      note={
+        skill.root === 'agents'
+          ? tr('该技能位于公共技能目录，{verb}后其他工具也将无法使用。', { verb })
+          : undefined
+      }
       confirmLabel={verb}
       onClose={props.onClose}
       onConfirm={async () => {
         const result = await api<{ name: string; removed: string }>('/api/delete', { name: skill.name })
-        await props.onDeleted(`已${verb} ${result.name}`)
+        await props.onDeleted(tr(market ? '已卸载 {name}' : '已删除 {name}', { name: result.name }))
       }}
     />
   )
@@ -1251,7 +1306,7 @@ function SkillPage(props: {
         setEnabled(payload.skill.enabled)
       })
       .catch(caught => {
-        if (alive) setLoadError(errorText(caught))
+        if (alive) setLoadError(localizedErrorText(caught))
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -1269,9 +1324,9 @@ function SkillPage(props: {
     try {
       await api(`/api/${next ? 'enable' : 'disable'}`, { name })
       setEnabled(next)
-      await props.onChanged(next ? '已启用' : '已停用')
+      await props.onChanged(tr(next ? '已启用' : '已停用'))
     } catch (caught) {
-      setActionError(errorText(caught))
+      setActionError(localizedErrorText(caught))
     } finally {
       setBusy(false)
     }
@@ -1279,9 +1334,9 @@ function SkillPage(props: {
 
   const subtitle = view
     ? [
-        ROOT_LABELS[view.root],
-        view.catalog ? `市场安装 ${view.catalog.version}` : '',
-        view.loadable ? '' : '结构不完整',
+        rootLabel(view.root),
+        view.catalog ? tr('市场安装 {version}', { version: view.catalog.version }) : '',
+        view.loadable ? '' : tr('结构不完整'),
       ]
         .filter(Boolean)
         .join(' · ')
@@ -1289,11 +1344,11 @@ function SkillPage(props: {
 
   return (
     <div className="dsc-page">
-      <button type="button" className="dsc-crumb" aria-label="返回技能中心" onClick={props.onBack}>
+      <button type="button" className="dsc-crumb" aria-label={tr('返回技能中心')} onClick={props.onBack}>
         <span className="dsc-crumb-icon">
           <IconChevron size={14} />
         </span>
-        <span>技能中心</span>
+        <span>{tr('技能中心')}</span>
       </button>
       <header className="dsc-page-head">
         <div className="dsc-page-titles">
@@ -1310,7 +1365,7 @@ function SkillPage(props: {
                 onClick={() => props.onDelete(view)}
               >
                 <IconTrash size={13} />
-                {view.catalog ? '卸载' : '删除'}
+                {tr(view.catalog ? '卸载' : '删除')}
               </button>
             ) : null}
             {busy ? (
@@ -1321,7 +1376,7 @@ function SkillPage(props: {
               <Toggle
                 checked={enabled}
                 disabled={!props.writable}
-                label={`${enabled ? '停用' : '启用'} ${name}`}
+                label={tr('{action} {name}', { action: tr(enabled ? '停用' : '启用'), name })}
                 onChange={next => void applyToggle(next)}
               />
             )}
@@ -1332,7 +1387,7 @@ function SkillPage(props: {
       {loading ? (
         <div className="dsc-loading">
           <Spinner size={16} />
-          正在读取详情
+          {tr('正在读取详情')}
         </div>
       ) : loadError ? (
         <div className="dsc-banner is-error">{loadError}</div>
@@ -1344,13 +1399,13 @@ function SkillPage(props: {
 
           <dl className="dsc-meta-list">
             <div>
-              <dt>路径</dt>
+              <dt>{tr('路径')}</dt>
               <dd className="dsc-mono">{view.copies[0]?.path || view.path || '—'}</dd>
             </div>
             {view.copies.length > 1
               ? view.copies.map(copy => (
                   <div key={`${copy.root}:${copy.path}`}>
-                    <dt>{ROOT_LABELS[copy.root] ?? copy.root}</dt>
+                    <dt>{rootLabel(copy.root)}</dt>
                     <dd className="dsc-mono">{copy.path}</dd>
                   </div>
                 ))
@@ -1358,23 +1413,27 @@ function SkillPage(props: {
             {view.catalog ? (
               <>
                 <div>
-                  <dt>市场来源</dt>
+                  <dt>{tr('市场来源')}</dt>
                   <dd className="dsc-mono">{view.catalog.key}</dd>
                 </div>
                 <div>
-                  <dt>版本</dt>
+                  <dt>{tr('版本')}</dt>
                   <dd>
                     {view.catalog.version}
-                    {view.catalog.updateAvailable ? <span className="dsc-badge is-ok">有新版本</span> : null}
-                    {view.catalog.localModified ? <span className="dsc-badge is-warn">本地已修改</span> : null}
+                    {view.catalog.updateAvailable ? (
+                      <span className="dsc-badge is-ok">{tr('有新版本')}</span>
+                    ) : null}
+                    {view.catalog.localModified ? (
+                      <span className="dsc-badge is-warn">{tr('本地已修改')}</span>
+                    ) : null}
                   </dd>
                 </div>
               </>
             ) : null}
             {view.linked ? (
               <div>
-                <dt>链接</dt>
-                <dd>符号链接指向外部目录，只读且不可删除。</dd>
+                <dt>{tr('链接')}</dt>
+                <dd>{tr('符号链接指向外部目录，只读且不可删除。')}</dd>
               </div>
             ) : null}
           </dl>
@@ -1417,7 +1476,7 @@ function CatalogPage(props: {
         setDetail(payload)
       })
       .catch(caught => {
-        if (alive) setLoadError(errorText(caught))
+        if (alive) setLoadError(localizedErrorText(caught))
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -1439,12 +1498,12 @@ function CatalogPage(props: {
         slug: item.slug,
         force,
       })
-      await props.onChanged(`已安装 ${result.name} ${result.version}`)
+      await props.onChanged(tr('已安装 {name} {version}', { name: result.name, version: result.version }))
       props.onBack()
     } catch (caught) {
       const code = codeOf(caught)
-      if (code === 'conflict' || code === 'local_modified') setConflict(errorText(caught))
-      else setActionError(errorText(caught))
+      if (code === 'conflict' || code === 'local_modified') setConflict(localizedErrorText(caught))
+      else setActionError(localizedErrorText(caught))
       setBusy(false)
     }
   }
@@ -1454,24 +1513,24 @@ function CatalogPage(props: {
       owner: item.owner,
       slug: item.slug,
     })
-    await props.onChanged(`已卸载 ${result.name}`)
+    await props.onChanged(tr('已卸载 {name}', { name: result.name }))
     props.onBack()
   }
 
   const installLabel = installed
     ? installed.updateAvailable
-      ? '更新到最新版'
-      : '重新安装'
-    : '安装'
+      ? tr('更新到最新版')
+      : tr('重新安装')
+    : tr('安装')
   const versionText = detail?.item.version ?? item.version
 
   return (
     <div className="dsc-page">
-      <button type="button" className="dsc-crumb" aria-label="返回技能中心" onClick={props.onBack}>
+      <button type="button" className="dsc-crumb" aria-label={tr('返回技能中心')} onClick={props.onBack}>
         <span className="dsc-crumb-icon">
           <IconChevron size={14} />
         </span>
-        <span>技能中心</span>
+        <span>{tr('技能中心')}</span>
       </button>
       <header className="dsc-page-head">
         <div className="dsc-page-titles">
@@ -1482,12 +1541,16 @@ function CatalogPage(props: {
                 <span className={installed.present ? 'dsc-badge is-ok' : 'dsc-badge is-warn'}>
                   {installed.present
                     ? versionText
-                      ? '已安装'
-                      : `已安装 ${installed.version}`
-                    : '已丢失，可清理'}
+                      ? tr('已安装')
+                      : tr('已安装 {version}', { version: installed.version })
+                    : tr('已丢失，可清理')}
                 </span>
-                {installed.updateAvailable ? <span className="dsc-badge is-ok">有新版本</span> : null}
-                {installed.localModified ? <span className="dsc-badge is-warn">本地已修改</span> : null}
+                {installed.updateAvailable ? (
+                  <span className="dsc-badge is-ok">{tr('有新版本')}</span>
+                ) : null}
+                {installed.localModified ? (
+                  <span className="dsc-badge is-warn">{tr('本地已修改')}</span>
+                ) : null}
               </span>
             ) : null}
           </div>
@@ -1505,7 +1568,7 @@ function CatalogPage(props: {
             onClick={() => void install(installed?.localModified === true)}
           >
             {busy ? <Spinner size={14} /> : installed?.updateAvailable ? <IconRefresh size={14} /> : <IconDownload size={14} />}
-            {busy ? '正在安装' : installLabel}
+            {busy ? tr('正在安装') : installLabel}
           </button>
           {installed?.present ? (
             <button
@@ -1515,7 +1578,7 @@ function CatalogPage(props: {
               onClick={() => setConfirmUninstall(true)}
             >
               <IconTrash size={13} />
-              卸载
+              {tr('卸载')}
             </button>
           ) : null}
         </div>
@@ -1524,7 +1587,7 @@ function CatalogPage(props: {
       {loading ? (
         <div className="dsc-loading">
           <Spinner size={16} />
-          正在读取市场详情
+          {tr('正在读取市场详情')}
         </div>
       ) : loadError ? (
         <div className="dsc-banner is-error">{loadError}</div>
@@ -1533,7 +1596,7 @@ function CatalogPage(props: {
           {actionError ? <div className="dsc-banner is-error">{actionError}</div> : null}
 
           {installed?.localModified ? (
-            <p className="dsc-note">本地文件与安装记录不一致，继续安装会覆盖你的修改。</p>
+            <p className="dsc-note">{tr('本地文件与安装记录不一致，继续安装会覆盖你的修改。')}</p>
           ) : null}
 
           <MarkdownPreview text={detail?.body || item.summary || ''} />
@@ -1543,7 +1606,7 @@ function CatalogPage(props: {
               <p>{conflict}</p>
               <div className="dsc-confirm-actions">
                 <button type="button" className="dsc-btn dsc-btn-ghost" onClick={() => setConflict(null)}>
-                  取消
+                  {tr('取消')}
                 </button>
                 <button
                   type="button"
@@ -1552,7 +1615,7 @@ function CatalogPage(props: {
                   onClick={() => void install(true)}
                 >
                   {busy ? <Spinner size={14} /> : null}
-                  覆盖安装
+                  {tr('覆盖安装')}
                 </button>
               </div>
             </div>
@@ -1562,9 +1625,9 @@ function CatalogPage(props: {
 
       {confirmUninstall && installed ? (
         <ConfirmDialog
-          title={`卸载「${installed.name}」？`}
-          message="卸载后它提供的功能会消失。"
-          confirmLabel="卸载"
+          title={tr('卸载「{name}」？', { name: installed.name })}
+          message={tr('卸载后它提供的功能会消失。')}
+          confirmLabel={tr('卸载')}
           onClose={() => setConfirmUninstall(false)}
           onConfirm={uninstall}
         />
@@ -1586,37 +1649,37 @@ function CreateDialog(props: {
     try {
       props.onCreate(description.trim())
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     }
   }
 
   return (
     <DialogShell
-      title="创建技能"
+      title={tr('创建技能')}
       onClose={props.onClose}
       footer={
         <>
           <span className="dsc-foot-gap" />
           <button type="button" className="dsc-btn dsc-btn-outline" onClick={props.onClose}>
             <IconX size={14} />
-            关闭
+            {tr('关闭')}
           </button>
           <button type="button" className="dsc-btn dsc-btn-primary" disabled={!ready} onClick={submit}>
             <IconSpark size={14} />
-            去创建
+            {tr('去创建')}
           </button>
         </>
       }
     >
       {error ? <div className="dsc-banner is-error">{error}</div> : null}
       <label className="dsc-field">
-        <span className="dsc-field-label">你想让它做什么？</span>
+        <span className="dsc-field-label">{tr('你想让它做什么？')}</span>
         <textarea
           className="dsc-textarea"
           rows={4}
           autoFocus
           value={description}
-          placeholder="例如：把会议纪要整理成结构化的周报，固定包含进展、风险、下周计划"
+          placeholder={tr('例如：把会议纪要整理成结构化的周报，固定包含进展、风险、下周计划')}
           onChange={event => setDescription(event.target.value)}
           onKeyDown={event => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit()
@@ -1661,7 +1724,7 @@ function UploadDialog(props: {
     if (!file) return
     reset()
     if (file.size > 32 << 20) {
-      setError('压缩包超过 32 MB 上限')
+      setError(tr('压缩包超过 32 MB 上限'))
       return
     }
     setReading(true)
@@ -1673,7 +1736,7 @@ function UploadDialog(props: {
       })
       setPicked({ kind: 'file', name: file.name, meta: formatBytes(file.size) })
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setReading(false)
     }
@@ -1687,17 +1750,17 @@ function UploadDialog(props: {
       const state = { total: 0 }
       await readEntry(root, '', entries, state)
       if (!entries.length) {
-        setError('文件夹里没有可导入的文件，请确认包含 SKILL.md')
+        setError(tr('文件夹里没有可导入的文件，请确认包含 SKILL.md'))
         return
       }
       setPayload({ body: { kind: 'entries', entries }, label: 'folder' })
       setPicked({
         kind: 'folder',
         name: root.name,
-        meta: `${entries.length} 个文件 · ${formatBytes(state.total)}`,
+        meta: tr('{count} 个文件 · {size}', { count: entries.length, size: formatBytes(state.total) }),
       })
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setReading(false)
     }
@@ -1718,27 +1781,27 @@ function UploadDialog(props: {
         root = root || path.split('/')[0] || ''
         total += file.size
         if (total > MAX_UPLOAD_BYTES) {
-          setError('解压后总大小超过 64 MB 上限')
+          setError(tr('解压后总大小超过 64 MB 上限'))
           return
         }
         if (entries.length >= MAX_UPLOAD_FILES) {
-          setError(`文件数量超过 ${MAX_UPLOAD_FILES} 上限`)
+          setError(tr('文件数量超过 {max} 上限', { max: MAX_UPLOAD_FILES }))
           return
         }
         entries.push({ path, data: bytesToBase64(await fileBytes(file)) })
       }
       if (!entries.length) {
-        setError('文件夹里没有可导入的文件，请确认包含 SKILL.md')
+        setError(tr('文件夹里没有可导入的文件，请确认包含 SKILL.md'))
         return
       }
       setPayload({ body: { kind: 'entries', entries }, label: 'folder' })
       setPicked({
         kind: 'folder',
-        name: root || '文件夹',
-        meta: `${entries.length} 个文件 · ${formatBytes(total)}`,
+        name: root || tr('文件夹'),
+        meta: tr('{count} 个文件 · {size}', { count: entries.length, size: formatBytes(total) }),
       })
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setReading(false)
     }
@@ -1760,23 +1823,23 @@ function UploadDialog(props: {
           const state = { total: 0 }
           await readDirectoryHandle(handle, handle.name, entries, state)
           if (!entries.length) {
-            setError('文件夹里没有可导入的文件，请确认包含 SKILL.md')
+            setError(tr('文件夹里没有可导入的文件，请确认包含 SKILL.md'))
             return
           }
           setPayload({ body: { kind: 'entries', entries }, label: 'folder' })
           setPicked({
             kind: 'folder',
             name: handle.name,
-            meta: `${entries.length} 个文件 · ${formatBytes(state.total)}`,
+            meta: tr('{count} 个文件 · {size}', { count: entries.length, size: formatBytes(state.total) }),
           })
         } catch (caught) {
-          setError(errorText(caught))
+          setError(localizedErrorText(caught))
         } finally {
           setReading(false)
         }
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === 'AbortError') return
-        setError(errorText(caught))
+        setError(localizedErrorText(caught))
       }
     })()
   }
@@ -1795,7 +1858,7 @@ function UploadDialog(props: {
       })
       setPicked({ kind: 'file', name: file.name, meta: formatBytes(file.size) })
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setReading(false)
     }
@@ -1830,7 +1893,7 @@ function UploadDialog(props: {
     const dirs = dropped.filter((entry): entry is FileSystemEntry => Boolean(entry?.isDirectory))
     if (dirs.length) {
       if (dropped.length !== 1) {
-        setError('请一次拖入一个文件夹')
+        setError(tr('请一次拖入一个文件夹'))
         return
       }
       const dir = dirs[0]
@@ -1840,14 +1903,14 @@ function UploadDialog(props: {
     }
     const files = event.dataTransfer.files
     if (files.length !== 1) {
-      setError('请一次拖入一个 .zip / .md 文件，或一个文件夹')
+      setError(tr('请一次拖入一个 .zip / .md 文件，或一个文件夹'))
       return
     }
     const file = files[0]
     if (!file) return
     if (/\.zip$/i.test(file.name)) void pickZip(files)
     else if (/\.md$/i.test(file.name)) void pickMarkdown(files)
-    else setError('请拖入 .zip / .md 文件，或一个文件夹')
+    else setError(tr('请拖入 .zip / .md 文件，或一个文件夹'))
   }
 
   const submit = async (overwrite = false): Promise<void> => {
@@ -1866,7 +1929,7 @@ function UploadDialog(props: {
       }
       await props.onDone(result.name)
     } catch (caught) {
-      setError(errorText(caught))
+      setError(localizedErrorText(caught))
     } finally {
       setBusy(false)
     }
@@ -1874,14 +1937,14 @@ function UploadDialog(props: {
 
   return (
     <DialogShell
-      title="上传技能"
+      title={tr('上传技能')}
       onClose={props.onClose}
       footer={
         <>
           <span className="dsc-foot-gap" />
           <button type="button" className="dsc-btn dsc-btn-outline" onClick={props.onClose}>
             <IconX size={14} />
-            关闭
+            {tr('关闭')}
           </button>
           <button
             type="button"
@@ -1890,7 +1953,7 @@ function UploadDialog(props: {
             onClick={() => void submit()}
           >
             {busy || reading ? <Spinner size={14} /> : <IconUpload size={14} />}
-            {busy ? '正在导入' : '导入'}
+            {busy ? tr('正在导入') : tr('导入')}
           </button>
         </>
       }
@@ -1930,15 +1993,15 @@ function UploadDialog(props: {
           <span className="dsc-pick-icon">
             <IconFile size={20} />
           </span>
-          <span className="dsc-pick-title">选择文件</span>
-          <span className="dsc-pick-hint">.zip 或 .md</span>
+          <span className="dsc-pick-title">{tr('选择文件')}</span>
+          <span className="dsc-pick-hint">{tr('.zip 或 .md')}</span>
         </button>
         <button type="button" className="dsc-pick" onClick={chooseFolder}>
           <span className="dsc-pick-icon">
             <IconFolder size={20} />
           </span>
-          <span className="dsc-pick-title">选择文件夹</span>
-          <span className="dsc-pick-hint">包含 SKILL.md</span>
+          <span className="dsc-pick-title">{tr('选择文件夹')}</span>
+          <span className="dsc-pick-hint">{tr('包含 SKILL.md')}</span>
         </button>
       </div>
 
@@ -1949,7 +2012,7 @@ function UploadDialog(props: {
           </span>
           <span className="dsc-picked-name">{picked.name}</span>
           <span className="dsc-picked-meta">{picked.meta}</span>
-          <IconButton label="移除已选内容" onClick={reset}>
+          <IconButton label={tr('移除已选内容')} onClick={reset}>
             <IconX size={12} />
           </IconButton>
         </div>
@@ -1963,27 +2026,27 @@ function UploadDialog(props: {
       ) : null}
 
       <div className="dsc-req">
-        <span className="dsc-req-title">文件要求</span>
+        <span className="dsc-req-title">{tr('文件要求')}</span>
         <ul>
-          <li>文件夹或 .zip 需要包含 SKILL.md 文件</li>
-          <li>.md 文件需包含 YAML 格式的技能名称和描述</li>
-          <li>最多 500 个文件，解压后不超过 64 MB</li>
+          <li>{tr('文件夹或 .zip 需要包含 SKILL.md 文件')}</li>
+          <li>{tr('.md 文件需包含 YAML 格式的技能名称和描述')}</li>
+          <li>{tr('最多 500 个文件，解压后不超过 64 MB')}</li>
         </ul>
       </div>
 
       {reading ? (
         <div className="dsc-loading is-inline">
           <Spinner size={14} />
-          正在读取文件
+          {tr('正在读取文件')}
         </div>
       ) : null}
 
       {skipped ? (
         <div className="dsc-confirm">
-          <p>已存在同名技能 {skipped}。覆盖会整体替换原目录。</p>
+          <p>{tr('已存在同名技能 {name}。覆盖会整体替换原目录。', { name: skipped })}</p>
           <div className="dsc-confirm-actions">
             <button type="button" className="dsc-btn dsc-btn-ghost" onClick={() => setSkipped(null)}>
-              取消
+              {tr('取消')}
             </button>
             <button
               type="button"
@@ -1992,7 +2055,7 @@ function UploadDialog(props: {
               onClick={() => void submit(true)}
             >
               {busy ? <Spinner size={14} /> : null}
-              覆盖导入
+              {tr('覆盖导入')}
             </button>
           </div>
         </div>

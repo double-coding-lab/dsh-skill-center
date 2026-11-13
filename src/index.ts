@@ -53,5 +53,6 @@ export async function apply(ctx: Context): Promise<() => void> {
       /* ignore */
     }
     registration?.dispose()
+    void store.close()
   }
 }

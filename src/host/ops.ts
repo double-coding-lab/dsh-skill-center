@@ -5,10 +5,30 @@ import { dirname, join, posix } from 'node:path'
 import { unzipSync } from 'fflate'
 
 import { buildSkillDocument, isSkillName, normalizeSkillName, parseSkillDoc } from './frontmatter.js'
+import { iconRoute, parseDataIcon } from './icon.js'
 import { groupSkills, localRoots, rootKeyOf, scanLocalRoots, toView } from './roots.js'
 import type { GroupedSkill, SkillEntry } from './roots.js'
-import { CREATOR_SKILL_NAME, MAX_ARCHIVE_DEPTH, MAX_ARCHIVE_FILES, MAX_BODY_BYTES, MAX_NAME_LENGTH, MAX_UNPACKED_BYTES, MAX_ZIP_BYTES } from '../shared/types.js'
-import type { CatalogState, CreateInput, ImportPayload, RootKey, SkillDetailPayload, SkillView, StatePayload } from '../shared/types.js'
+import {
+  CREATOR_SKILL_NAME,
+  MAX_ARCHIVE_DEPTH,
+  MAX_ARCHIVE_FILES,
+  MAX_BODY_BYTES,
+  MAX_NAME_LENGTH,
+  MAX_UNPACKED_BYTES,
+  MAX_ZIP_BYTES,
+  SKILL_GLYPHS,
+} from '../shared/types.js'
+import type {
+  CatalogState,
+  CreateInput,
+  ImportPayload,
+  RootKey,
+  SkillDetailPayload,
+  SkillGlyph,
+  SkillIcon,
+  SkillView,
+  StatePayload,
+} from '../shared/types.js'
 import type { SkillCenterContext } from './provider.js'
 import type { CatalogInstall, SkillStore } from './store.js'
 
@@ -109,6 +129,48 @@ function catalogState(store: SkillStore, name: string): CatalogState | undefined
   }
 }
 
+/** Override wins over a file icon, which wins over the icon recorded at market install. */
+function applyIcon(store: SkillStore, view: SkillView): SkillView {
+  const override = store.iconOverride(view.name)
+  if (override) {
+    if (override.kind === 'glyph') {
+      return { ...view, icon: { glyph: override.value as SkillGlyph, source: 'override' } }
+    }
+    return { ...view, icon: { url: iconRoute(view.name, override.updatedAt), source: 'override' } }
+  }
+  if (view.icon) return view
+  const record = store.installs().find(item => item.name === view.name)
+  if (record?.icon) return { ...view, icon: { url: record.icon, source: 'market' } }
+  return view
+}
+
+export async function setSkillIcon(
+  deps: OpsDeps,
+  input: { name: string; kind: 'glyph' | 'image'; value: string },
+): Promise<{ icon: SkillIcon }> {
+  const { name, kind, value } = input
+  if (!isSkillName(name)) throw fail('invalid_name', `非法技能名：${name}`)
+  await deps.store.ready()
+  if (!deps.store.writable) throw fail('policy_unavailable', '技能图标存储不可写')
+  const updatedAt = Date.now()
+  if (kind === 'glyph') {
+    if (!(SKILL_GLYPHS as readonly string[]).includes(value)) throw fail('invalid_icon', '图标标识无效')
+    await deps.store.setIconOverride(name, { version: 1, kind, value, updatedAt })
+    deps.onChanged?.()
+    return { icon: { glyph: value as SkillGlyph, source: 'override' } }
+  }
+  if (!parseDataIcon(value)) throw fail('invalid_icon', '图标必须是 SVG、PNG、JPEG 或 WebP，且不超过 256 KB')
+  await deps.store.setIconOverride(name, { version: 1, kind: 'image', value, updatedAt })
+  deps.onChanged?.()
+  return { icon: { url: iconRoute(name, updatedAt), source: 'override' } }
+}
+
+export async function resetSkillIcon(deps: OpsDeps, name: string): Promise<void> {
+  if (!isSkillName(name)) throw fail('invalid_name', `非法技能名：${name}`)
+  await deps.store.deleteIconOverride(name)
+  deps.onChanged?.()
+}
+
 interface PluginSkillSummary {
   name: string
   description?: string
@@ -178,12 +240,12 @@ export async function stateOf(deps: OpsDeps): Promise<StatePayload> {
   const disabled = deps.store.disabledSet()
   const localNames = new Set(index.groups.map(group => group.name))
   const skills: SkillView[] = index.groups.map(group => {
-    const view = toView(group, disabled)
+    const view = applyIcon(deps.store, toView(group, disabled))
     const catalog = catalogState(deps.store, group.name)
     return catalog ? { ...view, catalog } : view
   })
   for (const plugin of await pluginSkills(deps.ctx, localNames)) {
-    skills.push({
+    skills.push(applyIcon(deps.store, {
       name: plugin.name,
       description: plugin.description ?? '',
       root: 'preset',
@@ -195,7 +257,7 @@ export async function stateOf(deps: OpsDeps): Promise<StatePayload> {
       modelInvocable: true,
       userInvocable: true,
       copies: [],
-    })
+    }))
   }
   const counts: Record<RootKey, number> = { ...index.counts }
   counts.preset = skills.filter(skill => skill.root === 'preset').length
@@ -222,7 +284,7 @@ async function presetDetail(deps: OpsDeps, name: string): Promise<SkillDetailPay
   const enabled = !deps.store.disabledSet().has(name)
   const content = definition.content ?? ''
   return {
-    skill: {
+    skill: applyIcon(deps.store, {
       name,
       description: definition.description ?? '',
       root: 'preset',
@@ -234,7 +296,7 @@ async function presetDetail(deps: OpsDeps, name: string): Promise<SkillDetailPay
       modelInvocable: definition.invocation?.modelInvocable ?? true,
       userInvocable: definition.invocation?.userInvocable ?? true,
       copies: [],
-    },
+    }),
     document: content,
     frontmatter: null,
     body: content,
@@ -252,7 +314,7 @@ export async function detailOf(deps: OpsDeps, name: string): Promise<SkillDetail
   }
   const document = await fs.readFile(group.winner.path, 'utf8')
   const parsed = parseSkillDoc(document)
-  const view = toView(group, deps.store.disabledSet())
+  const view = applyIcon(deps.store, toView(group, deps.store.disabledSet()))
   const catalog = catalogState(deps.store, name)
   const record = deps.store.installs().find(item => item.name === name)
   if (catalog && record) {
@@ -382,6 +444,7 @@ export async function deleteSkill(deps: OpsDeps, name: string): Promise<{ name: 
   for (const record of deps.store.installs()) {
     if (record.name === name) await deps.store.deleteInstall(record.key)
   }
+  await deps.store.deleteIconOverride(name)
   if (deps.store.disabledSet().has(name)) {
     await deps.store.setEnabled(name, true).catch(() => undefined)
   }

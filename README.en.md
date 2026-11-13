@@ -49,6 +49,10 @@ The same skill can exist in the local directory, the shared directory and an age
 
 Toggle state lives in the plugin's local policy ledger, and `SKILL.md` is never touched. The same file may also be used by Codex, Qoder or other tools; rewriting its frontmatter would leak state into their configuration and could not be undone by uninstalling this plugin.
 
+### Skill icons
+
+Installed rows and market cards both carry artwork. Precedence: manual choice in the detail page → icon shipped with the skill (`icon.svg` / `icon.png` / `icon.webp`, or a frontmatter `icon`) → catalog entry icon → category glyph inferred from name and topics. The detail page can upload an image, pick a built-in glyph, or reset to default.
+
 ### Detail page
 
 Path, every copy, the Markdown-rendered body, catalog version and local modification state. Symlinked skills show where they point and stay read-only and undeletable.

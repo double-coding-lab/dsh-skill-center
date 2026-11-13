@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom'
 
 import { bindLocale, currentLocale, tr, useLocaleRevision } from './i18n.js'
 import { HOST_ERROR_EN } from './en.js'
-import { PANEL_ID, ROUTE_PREFIX } from '../shared/types.js'
+import { SkillArtwork } from './artwork.js'
+import { PANEL_ID, ROUTE_PREFIX, SKILL_GLYPHS } from '../shared/types.js'
 import type {
   ApiEnvelope,
   CatalogDetailPayload,
@@ -13,6 +14,8 @@ import type {
   CatalogListPayload,
   ImportEntry,
   SkillDetailPayload,
+  SkillGlyph,
+  SkillIcon,
   SkillView,
   StatePayload,
 } from '../shared/types.js'
@@ -29,6 +32,29 @@ const ROOT_LABEL_KEYS: Record<SkillView['root'], string> = {
   dsh: '本地技能',
   agents: '公共技能',
   preset: '由插件提供',
+}
+
+const GLYPH_LABELS: Record<SkillGlyph, string> = {
+  code: '代码',
+  git: 'Git',
+  doc: '文档',
+  data: '数据',
+  image: '图像',
+  web: '网页',
+  security: '安全',
+  test: '测试',
+  deploy: '终端',
+  search: '搜索',
+  agent: 'Agent',
+  generic: '通用',
+}
+
+const ICON_MIME_BY_EXT: Record<string, string> = {
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
 }
 
 function rootLabel(key: SkillView['root']): string {
@@ -696,11 +722,14 @@ function SkillRow(props: {
   return (
     <div className={busy ? 'dsc-row is-busy' : 'dsc-row'}>
       <button type="button" className="dsc-row-hit" onClick={() => props.onOpen(skill)}>
-        <span className="dsc-row-title">
-          <strong>{skill.name}</strong>
-          {badges}
+        <SkillArtwork name={skill.name} description={skill.description} icon={skill.icon} frame="row" />
+        <span className="dsc-row-text">
+          <span className="dsc-row-title">
+            <strong>{skill.name}</strong>
+            {badges}
+          </span>
+          <span className="dsc-row-desc">{skill.description || tr('没有描述')}</span>
         </span>
-        <span className="dsc-row-desc">{skill.description || tr('没有描述')}</span>
       </button>
 
       <div className="dsc-row-actions">
@@ -838,6 +867,7 @@ function IconButton(props: {
       type="button"
       className={`dsc-icon-btn${props.active ? ' is-active' : ''}${props.className ? ` ${props.className}` : ''}`}
       aria-label={props.label}
+      title={props.label}
       disabled={props.disabled}
       onClick={props.onClick}
     >
@@ -1076,7 +1106,6 @@ function CatalogCard(props: {
   onUninstall: () => void
 }): JSX.Element {
   const { item } = props
-  const initial = (item.title || item.slug).slice(0, 1).toUpperCase()
   return (
     <article
       className="dsc-card"
@@ -1093,7 +1122,13 @@ function CatalogCard(props: {
       }}
     >
       <span className="dsc-card-top">
-        <span className="dsc-avatar">{initial}</span>
+        <SkillArtwork
+          name={item.title || item.slug}
+          description={item.summary}
+          topics={item.topics}
+          icon={item.icon ? { url: item.icon, source: 'market' } : undefined}
+          frame="card"
+        />
         <span className="dsc-card-title">
           <strong>{item.title}</strong>
           <span>{item.owner}</span>
@@ -1279,6 +1314,126 @@ function DeleteDialog(props: {
   )
 }
 
+function IconPickerDialog(props: {
+  name: string
+  description: string
+  current?: SkillIcon
+  onClose: () => void
+  onApply: (kind: 'glyph' | 'image', value: string) => Promise<void>
+  onReset: () => Promise<void>
+}): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const run = async (task: () => Promise<void>): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      await task()
+    } catch (caught) {
+      setError(localizedErrorText(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const upload = (file: File | undefined): void => {
+    if (!file) return
+    if (file.size > 256 * 1024) {
+      setError(tr('图标不能超过 256 KB'))
+      return
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+    const mediaType = file.type || ICON_MIME_BY_EXT[ext]
+    if (!mediaType || !Object.values(ICON_MIME_BY_EXT).includes(mediaType)) {
+      setError(tr('只支持 SVG、PNG、JPEG 或 WebP'))
+      return
+    }
+    void run(async () => {
+      const raw = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result ?? ''))
+        reader.onerror = () => reject(new Error(tr('读取图片失败')))
+        reader.readAsDataURL(file)
+      })
+      const comma = raw.indexOf(',')
+      if (comma < 0) throw new Error(tr('读取图片失败'))
+      await props.onApply('image', `data:${mediaType};base64,${raw.slice(comma + 1)}`)
+    })
+  }
+
+  const selected = (glyph: SkillGlyph): boolean =>
+    props.current?.source === 'override' && props.current.glyph === glyph
+
+  return (
+    <DialogShell
+      title={tr('更换图标')}
+      onClose={props.onClose}
+      footer={
+        <>
+          {props.current?.source === 'override' ? (
+            <button
+              type="button"
+              className="dsc-btn dsc-btn-ghost dsc-dialog-start"
+              disabled={busy}
+              onClick={() => void run(props.onReset)}
+            >
+              {tr('恢复默认')}
+            </button>
+          ) : null}
+          <button type="button" className="dsc-btn dsc-btn-outline" disabled={busy} onClick={props.onClose}>
+            {tr('取消')}
+          </button>
+        </>
+      }
+    >
+      {error ? <div className="dsc-banner is-error">{error}</div> : null}
+      <div className="dsc-icon-preview">
+        <SkillArtwork name={props.name} description={props.description} icon={props.current} frame="detail" />
+        <div className="dsc-icon-preview-actions">
+          <button
+            type="button"
+            className="dsc-btn dsc-btn-outline dsc-btn-sm"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            <IconUpload size={14} />
+            {tr('上传图片')}
+          </button>
+          <span className="dsc-note">{tr('SVG、PNG、JPEG 或 WebP，最大 256 KB')}</span>
+        </div>
+        {busy ? <Spinner size={14} /> : null}
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".svg,.png,.jpg,.jpeg,.webp,image/svg+xml,image/png,image/jpeg,image/webp"
+        hidden
+        onChange={event => {
+          upload(event.target.files?.[0])
+          event.target.value = ''
+        }}
+      />
+      <div className="dsc-glyph-grid">
+        {SKILL_GLYPHS.map(glyph => (
+          <button
+            key={glyph}
+            type="button"
+            className={selected(glyph) ? 'dsc-glyph is-selected' : 'dsc-glyph'}
+            disabled={busy}
+            aria-label={tr(GLYPH_LABELS[glyph])}
+            title={tr(GLYPH_LABELS[glyph])}
+            onClick={() => void run(() => props.onApply('glyph', glyph))}
+          >
+            <SkillArtwork name={props.name} icon={{ glyph, source: 'override' }} frame="row" />
+          </button>
+        ))}
+      </div>
+    </DialogShell>
+  )
+}
+
 function SkillPage(props: {
   name: string
   writable: boolean
@@ -1293,6 +1448,7 @@ function SkillPage(props: {
   const [enabled, setEnabled] = useState(true)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [iconOpen, setIconOpen] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -1332,6 +1488,21 @@ function SkillPage(props: {
     }
   }
 
+  const applyIcon = async (kind: 'glyph' | 'image', value: string): Promise<void> => {
+    const result = await api<{ icon: SkillIcon }>('/api/icon', { name, kind, value })
+    setData(current => (current ? { ...current, skill: { ...current.skill, icon: result.icon } } : current))
+    setIconOpen(false)
+    await props.onChanged(tr('图标已更新'))
+  }
+
+  const resetIcon = async (): Promise<void> => {
+    await api('/api/icon/reset', { name })
+    const fresh = await api<SkillDetailPayload>(`/api/detail?name=${encodeURIComponent(name)}`)
+    setData(fresh)
+    setIconOpen(false)
+    await props.onChanged(tr('图标已恢复默认'))
+  }
+
   const subtitle = view
     ? [
         rootLabel(view.root),
@@ -1351,12 +1522,16 @@ function SkillPage(props: {
         <span>{tr('技能中心')}</span>
       </button>
       <header className="dsc-page-head">
+        {view ? <SkillArtwork name={name} description={view.description} icon={view.icon} frame="detail" /> : null}
         <div className="dsc-page-titles">
           <h1>{name}</h1>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
         {view ? (
           <div className="dsc-page-head-actions">
+            <IconButton label={tr('更换图标')} disabled={busy} onClick={() => setIconOpen(true)}>
+              <IconImage size={16} />
+            </IconButton>
             {props.writable && view.editable ? (
               <button
                 type="button"
@@ -1440,6 +1615,16 @@ function SkillPage(props: {
 
           <MarkdownPreview text={data?.body || data?.document || ''} />
         </>
+      ) : null}
+      {iconOpen && view ? (
+        <IconPickerDialog
+          name={name}
+          description={view.description}
+          current={view.icon}
+          onClose={() => setIconOpen(false)}
+          onApply={applyIcon}
+          onReset={resetIcon}
+        />
       ) : null}
     </div>
   )
@@ -1533,6 +1718,13 @@ function CatalogPage(props: {
         <span>{tr('技能中心')}</span>
       </button>
       <header className="dsc-page-head">
+        <SkillArtwork
+          name={item.title || item.slug}
+          description={item.summary}
+          topics={item.topics}
+          icon={item.icon ? { url: item.icon, source: 'market' } : undefined}
+          frame="detail"
+        />
         <div className="dsc-page-titles">
           <div className="dsc-page-title-row">
             <h1>{item.title}</h1>
@@ -2211,6 +2403,16 @@ function IconArchive(props: { size?: number }): JSX.Element {
   )
 }
 
+function IconImage(props: { size?: number }): JSX.Element {
+  return (
+    <Svg size={props.size}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 15-5-5L5 20" />
+    </Svg>
+  )
+}
+
 function IconFolder(props: { size?: number }): JSX.Element {
   return (
     <Svg size={props.size}>
@@ -2295,16 +2497,17 @@ function installStyles(): void {
 .dsc-search-clear{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .dsc-search-clear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsc-section{margin-bottom:20px}
-.dsc-section-head{display:flex;align-items:baseline;gap:8px;min-width:0;margin-bottom:4px}
+.dsc-section-head{display:flex;align-items:baseline;gap:8px;min-width:0;margin-bottom:8px}
 .dsc-section-head h2{margin:0;font-size:14px;font-weight:500;line-height:22px;color:var(--dsw-alias-label-primary);white-space:nowrap}
 .dsc-count{margin-left:6px;font-size:12px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
 .dsc-list{display:flex;flex-direction:column;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1)}
-.dsc-row{display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:.5px solid var(--dsw-alias-border-l3);transition:background-color .15s}
+.dsc-row{display:flex;align-items:center;gap:12px;padding:0 8px;border-bottom:.5px solid var(--dsw-alias-border-l3);transition:background-color .15s}
 .dsc-row:last-child{border-bottom:0}
 .dsc-row:hover{background:var(--dsw-alias-bg-layer-2)}
 .dsc-row.is-busy{opacity:.75}
-.dsc-row-hit{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px;padding:12px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dsc-row-hit{display:flex;flex:1;min-width:0;align-items:center;gap:14px;padding:8px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .dsc-row-hit:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px;border-radius:var(--dsw-radius-sm)}
+.dsc-row-text{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
 .dsc-row-title{display:flex;align-items:center;gap:6px;min-width:0;font-size:14px;line-height:20px}
 .dsc-row-title strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .dsc-row-desc{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
@@ -2333,6 +2536,15 @@ function installStyles(): void {
 .dsc-page-titles p{margin:2px 0 0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .dsc-page-title-row{display:flex;align-items:center;gap:8px;min-width:0}
 .dsc-page-title-row h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
+.dsc-page-head > .dsc-art{margin-top:2px}
+.dsc-icon-preview{display:flex;align-items:center;gap:12px}
+.dsc-icon-preview-actions{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
+.dsc-glyph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.dsc-glyph{display:flex;align-items:center;justify-content:center;padding:6px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:transparent;cursor:pointer}
+.dsc-glyph:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.dsc-glyph.is-selected{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.dsc-glyph:disabled{opacity:.5;cursor:not-allowed}
+.dsc-dialog-start{margin-right:auto}
 .dsc-page-badges{display:flex;align-items:center;gap:4px;flex:none}
 .dsc-page-desc{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dsc-page .dsc-md{max-height:none}
@@ -2355,7 +2567,10 @@ function installStyles(): void {
 .dsc-card:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .dsc-card-top{display:flex;align-items:center;gap:10px;min-width:0;padding-right:44px}
 .dsc-card-version{position:absolute;top:16px;right:16px;flex:none}
-.dsc-avatar{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:15px;font-weight:500}
+.dsc-art{display:inline-flex;align-items:center;justify-content:center;flex:none;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg)}
+.dsc-art.is-row,.dsc-art.is-card,.dsc-art.is-detail{width:48px;height:48px}
+.dsc-art svg,.dsc-art img{width:36px;height:36px}
+.dsc-art img{object-fit:contain}
 .dsc-card-title{display:flex;flex:1;flex-direction:column;min-width:0}
 .dsc-card-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px}
 .dsc-card-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}

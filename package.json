@@ -2,6 +2,7 @@
   "name": "@double-coding/dsh-skill-center",
   "version": "0.1.1",
   "description": "Local skill manager for DeepSeek Harness: list, toggle, create, import and install skills from ClawHub.",
+  "icon": "assets/plugin-icon.svg",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -42,6 +43,7 @@
   "files": [
     "dist",
     "skills",
+    "assets/plugin-icon.svg",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",

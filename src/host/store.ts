@@ -17,9 +17,19 @@ export const catalogInstallSchema = z.object({
   version: z.string().min(1),
   installedAt: z.number(),
   files: z.array(z.object({ path: z.string().min(1), sha256: z.string().min(1) })),
+  icon: z.string().min(1).optional(),
 })
 
 export type CatalogInstall = z.infer<typeof catalogInstallSchema>
+
+export const iconOverrideSchema = z.object({
+  version: z.literal(1),
+  kind: z.enum(['image', 'glyph']),
+  value: z.string().min(1),
+  updatedAt: z.number(),
+})
+
+export type IconOverride = z.infer<typeof iconOverrideSchema>
 
 export const skillCenterDomain = defineDomain({
   name: 'dsh_skill_center',
@@ -27,6 +37,7 @@ export const skillCenterDomain = defineDomain({
   tables: {
     policy: domainTable<string, PolicyRecord>(policySchema),
     catalog_installs: domainTable<string, CatalogInstall>(catalogInstallSchema),
+    icon_overrides: domainTable<string, IconOverride>(iconOverrideSchema),
   },
 })
 
@@ -38,6 +49,7 @@ export interface DomainHandle {
   close?: () => Promise<void>
   table(name: 'policy'): TableHandle<string, PolicyRecord>
   table(name: 'catalog_installs'): TableHandle<string, CatalogInstall>
+  table(name: 'icon_overrides'): TableHandle<string, IconOverride>
 }
 
 export interface TableHandle<K extends string, V> {
@@ -52,7 +64,7 @@ const DEFAULT_POLICY: PolicyRecord = { version: 1, disabled: [], updatedAt: 0 }
 /** Domain-backed policy and install ledger; falls back to fail-closed read-only when storage is absent. */
 export class SkillStore {
   private domain: DomainHandle | null = null
-  private opened = false
+  private opening: Promise<DomainHandle | null> | null = null
   private readonly ctx: unknown
 
   /** True when the policy could not be read; callers must treat every skill as disabled. */
@@ -66,12 +78,26 @@ export class SkillStore {
   }
 
   private async open(): Promise<DomainHandle | null> {
-    if (this.opened) return this.domain
-    this.opened = true
-    const face = this.ctx as { get?: (name: string) => unknown } | null
+    if (this.domain) return this.domain
+    if (this.opening) return this.opening
+    const opening = this.openOnce()
+    this.opening = opening
+    try {
+      return await opening
+    } finally {
+      if (this.opening === opening) this.opening = null
+    }
+  }
+
+  private async openOnce(): Promise<DomainHandle | null> {
+    const face = this.ctx as {
+      get?: (name: string) => unknown
+      reflect?: { get?: (name: string) => unknown }
+    } | null
     let facility: StorageFace | undefined
     try {
-      facility = typeof face?.get === 'function' ? (face.get('storageDomain') as StorageFace | undefined) : undefined
+      const reflected = face?.reflect?.get?.('storageDomain')
+      facility = (reflected ?? face?.get?.('storageDomain')) as StorageFace | undefined
     } catch {
       facility = undefined
     }
@@ -82,8 +108,12 @@ export class SkillStore {
       return null
     }
     try {
-      this.domain = await facility.open(skillCenterDomain)
-      return this.domain
+      const domain = await facility.open(skillCenterDomain)
+      this.domain = domain
+      this.writable = true
+      this.failClosed = false
+      this.warning = null
+      return domain
     } catch (error) {
       this.writable = false
       this.failClosed = true
@@ -99,7 +129,7 @@ export class SkillStore {
   async close(): Promise<void> {
     const domain = this.domain
     this.domain = null
-    this.opened = false
+    this.opening = null
     if (typeof domain?.close === 'function') await domain.close().catch(() => undefined)
   }
 
@@ -109,6 +139,10 @@ export class SkillStore {
 
   private catalogTable(): TableHandle<string, CatalogInstall> | null {
     return this.domain ? this.domain.table('catalog_installs') : null
+  }
+
+  private iconTable(): TableHandle<string, IconOverride> | null {
+    return this.domain ? this.domain.table('icon_overrides') : null
   }
 
   policy(): PolicyRecord {
@@ -157,5 +191,25 @@ export class SkillStore {
     const table = this.catalogTable()
     if (!table || !this.writable) return
     await table.delete(key)
+  }
+
+  iconOverride(name: string): IconOverride | undefined {
+    return this.iconTable()?.get(name)
+  }
+
+  async setIconOverride(name: string, record: IconOverride): Promise<void> {
+    await this.ready()
+    const table = this.iconTable()
+    if (!table || !this.writable) {
+      throw Object.assign(new Error('技能图标存储不可写'), { code: 'policy_unavailable' })
+    }
+    await table.put(name, record)
+  }
+
+  async deleteIconOverride(name: string): Promise<void> {
+    await this.ready()
+    const table = this.iconTable()
+    if (!table || !this.writable) return
+    await table.delete(name)
   }
 }

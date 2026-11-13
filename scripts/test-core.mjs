@@ -10,7 +10,8 @@ import {
   normalizeSkillName,
   parseSkillDoc,
 } from '../dist/host/frontmatter.js'
-import { createSkill, deleteSkill, normalizeArchivePath, unpackPayload } from '../dist/host/ops.js'
+import { createSkill, deleteSkill, normalizeArchivePath, resetSkillIcon, setSkillIcon, stateOf, unpackPayload } from '../dist/host/ops.js'
+import { iconFileAt, normalizeCatalogIcon } from '../dist/host/icon.js'
 import { createProvider } from '../dist/host/provider.js'
 import { SkillStore } from '../dist/host/store.js'
 
@@ -134,7 +135,7 @@ await test('store refuses writes when storage is missing', async () => {
 })
 
 await test('store persists a sorted disabled policy', async () => {
-  const tables = { policy: new Map(), catalog_installs: new Map() }
+  const tables = { policy: new Map(), catalog_installs: new Map(), icon_overrides: new Map() }
   const table = name => ({
     get: key => tables[name].get(key),
     entries: () => tables[name].entries(),
@@ -155,7 +156,7 @@ await test('store persists a sorted disabled policy', async () => {
 })
 
 function memoryDeps() {
-  const tables = { policy: new Map(), catalog_installs: new Map() }
+  const tables = { policy: new Map(), catalog_installs: new Map(), icon_overrides: new Map() }
   const table = name => ({
     get: key => tables[name].get(key),
     entries: () => tables[name].entries(),
@@ -191,6 +192,83 @@ await test('createSkill writes supporting files and rejects escaped paths', asyn
       files: [{ path: 'references/topic.md', content: 'detail' }],
     })
     assert.equal(readFileSync(join(dirname(result.path), 'references', 'topic.md'), 'utf8'), 'detail')
+  } finally {
+    process.env.DSH_HOME = previous
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+await test('iconFileAt reads bundle icons and refuses paths outside the skill', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsc-icon-'))
+  const outside = join(home, 'outside.svg')
+  writeFileSync(outside, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"></svg>')
+  const bundle = join(home, 'bundle')
+  mkdirSync(bundle, { recursive: true })
+  writeFileSync(join(bundle, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"></svg>')
+  try {
+    const found = await iconFileAt(bundle)
+    assert.equal(found?.mediaType, 'image/svg+xml')
+    const empty = join(home, 'empty')
+    mkdirSync(empty, { recursive: true })
+    assert.equal(await iconFileAt(empty, '../outside.svg'), undefined)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+await test('normalizeCatalogIcon accepts https and image data, rejects other schemes', () => {
+  assert.equal(normalizeCatalogIcon('https://example.com/icon.png'), 'https://example.com/icon.png')
+  assert.equal(normalizeCatalogIcon('/icon.png'), 'https://clawhub.ai/icon.png')
+  assert.equal(normalizeCatalogIcon('http://example.com/icon.png'), undefined)
+  assert.equal(normalizeCatalogIcon('javascript:alert(1)'), undefined)
+  assert.match(
+    normalizeCatalogIcon(`data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64')}`) ?? '',
+    /^data:image\/png;base64,/,
+  )
+})
+
+await test('skill icon overrides resolve ahead of file icons and can be reset', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsc-override-'))
+  const previous = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  try {
+    const { ctx, store } = memoryDeps()
+    const deps = { ctx, store }
+    await createSkill(deps, { name: 'icon-demo', description: 'demo', body: '# body' })
+    await store.putInstall({
+      key: 'owner/icon-demo',
+      name: 'icon-demo',
+      version: '1.0.0',
+      installedAt: Date.now(),
+      files: [],
+      icon: 'https://example.com/icon.png',
+    })
+    let state = await stateOf(deps)
+    assert.deepEqual(state.skills.find(skill => skill.name === 'icon-demo')?.icon, {
+      url: 'https://example.com/icon.png',
+      source: 'market',
+    })
+    const glyph = await setSkillIcon(deps, { name: 'icon-demo', kind: 'glyph', value: 'search' })
+    assert.deepEqual(glyph, { icon: { glyph: 'search', source: 'override' } })
+    state = await stateOf(deps)
+    assert.deepEqual(state.skills.find(skill => skill.name === 'icon-demo')?.icon, { glyph: 'search', source: 'override' })
+    const image = await setSkillIcon(deps, {
+      name: 'icon-demo',
+      kind: 'image',
+      value: `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64')}`,
+    })
+    assert.equal(image.icon.source, 'override')
+    assert.match(image.icon.url ?? '', /^\/dsh-skill-center\/api\/skill-icon\?/)
+    await assert.rejects(
+      setSkillIcon(deps, { name: 'icon-demo', kind: 'glyph', value: 'nope' }),
+      error => error.code === 'invalid_icon',
+    )
+    await resetSkillIcon(deps, 'icon-demo')
+    state = await stateOf(deps)
+    assert.deepEqual(state.skills.find(skill => skill.name === 'icon-demo')?.icon, {
+      url: 'https://example.com/icon.png',
+      source: 'market',
+    })
   } finally {
     process.env.DSH_HOME = previous
     rmSync(home, { recursive: true, force: true })

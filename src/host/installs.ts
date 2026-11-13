@@ -61,6 +61,7 @@ export async function installFromCatalog(deps: OpsDeps, input: InstallInput): Pr
     version: detail.version,
     installedAt: Date.now(),
     files: hashFiles(unpacked.files),
+    ...(detail.item.icon === undefined ? {} : { icon: detail.item.icon }),
   }
   await deps.store.putInstall(next)
   deps.onChanged?.()
@@ -83,6 +84,7 @@ export async function uninstallFromCatalog(deps: OpsDeps, input: { owner: string
   if (!target.startsWith(root)) throw fail('path_unsafe', '目标路径越界')
   await fs.rm(target, { recursive: true, force: true })
   await deps.store.deleteInstall(key)
+  await deps.store.deleteIconOverride(record.name)
   if (deps.store.disabledSet().has(record.name)) {
     await deps.store.setEnabled(record.name, true).catch(() => undefined)
   }

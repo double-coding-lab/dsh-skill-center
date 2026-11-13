@@ -1,8 +1,10 @@
 import { promises as fs } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { invocationOf, isSkillName, parseSkillDoc } from './frontmatter.js'
+import { iconFileAt, iconRoute } from './icon.js'
+import type { IconFile } from './icon.js'
 import type { RootDescriptor, RootKey, SkillCopy, SkillView } from '../shared/types.js'
 
 const MAX_ENTRIES_PER_ROOT = 1000
@@ -18,6 +20,7 @@ export interface SkillEntry {
   userInvocable: boolean
   loadable: boolean
   declaredName: string | null
+  icon?: IconFile
 }
 
 export interface RootScan {
@@ -88,6 +91,9 @@ async function entryOf(name: string, fullPath: string, kind: 'bundle' | 'file', 
   if (!skillName) return null
   const description = (doc.map['description'] ?? '').trim()
   const invocation = invocationOf(doc.map)
+  const icon = kind === 'bundle'
+    ? await iconFileAt(fullPath, doc.map['icon'])
+    : await iconFileAt(dirname(fullPath), doc.map['icon'], false)
   return {
     name: skillName,
     description,
@@ -99,6 +105,7 @@ async function entryOf(name: string, fullPath: string, kind: 'bundle' | 'file', 
     userInvocable: invocation.userInvocable,
     loadable: doc.hasFrontmatter && description.length > 0,
     declaredName: declared || null,
+    ...(icon === undefined ? {} : { icon }),
   }
 }
 
@@ -185,6 +192,7 @@ export function toView(group: GroupedSkill, disabled: ReadonlySet<string>): Skil
     linked: entry.linked,
   }))
   const winnerRoot = group.copies[0]?.root.key ?? 'dsh'
+  const iconEntry = group.copies.map(copy => copy.entry).find(entry => entry.icon !== undefined)
   const deletable = group.copies.some(
     copy => (copy.root.key === 'dsh' || copy.root.key === 'agents') && !copy.entry.linked,
   )
@@ -200,6 +208,9 @@ export function toView(group: GroupedSkill, disabled: ReadonlySet<string>): Skil
     modelInvocable: group.winner.modelInvocable,
     userInvocable: group.winner.userInvocable,
     copies,
+    ...(iconEntry?.icon === undefined
+      ? {}
+      : { icon: { url: iconRoute(group.name, iconEntry.icon.version), source: 'file' as const } }),
   }
 }
 

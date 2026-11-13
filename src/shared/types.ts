@@ -46,6 +46,31 @@ export interface CatalogState {
   present: boolean
 }
 
+export const SKILL_GLYPHS = [
+  'code',
+  'git',
+  'doc',
+  'data',
+  'image',
+  'web',
+  'security',
+  'test',
+  'deploy',
+  'search',
+  'agent',
+  'generic',
+] as const
+
+export type SkillGlyph = (typeof SKILL_GLYPHS)[number]
+
+export type SkillIconSource = 'override' | 'file' | 'market'
+
+export interface SkillIcon {
+  url?: string
+  glyph?: SkillGlyph
+  source: SkillIconSource
+}
+
 export interface SkillView {
   name: string
   description: string
@@ -59,6 +84,7 @@ export interface SkillView {
   userInvocable: boolean
   copies: SkillCopy[]
   catalog?: CatalogState
+  icon?: SkillIcon
 }
 
 export interface StatePayload {
@@ -86,6 +112,7 @@ export interface CatalogItem {
   downloads?: number
   version?: string
   icon?: string
+  topics?: string[]
 }
 
 export interface CatalogListPayload {

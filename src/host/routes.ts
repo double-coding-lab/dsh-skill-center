@@ -1,8 +1,22 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { promises as fs } from 'node:fs'
 
 import { listPopular, search, fetchDetail } from './clawhub.js'
+import { isSkillName } from './frontmatter.js'
+import { parseDataIcon } from './icon.js'
 import { installFromCatalog, installView, uninstallFromCatalog } from './installs.js'
-import { createSkill, deleteSkill, detailOf, fail, importPackage, setEnabled, stateOf } from './ops.js'
+import {
+  createSkill,
+  deleteSkill,
+  detailOf,
+  fail,
+  importPackage,
+  localIndex,
+  resetSkillIcon,
+  setEnabled,
+  setSkillIcon,
+  stateOf,
+} from './ops.js'
 import type { OpsDeps } from './ops.js'
 import { ROUTE_PREFIX } from '../shared/types.js'
 import type { ApiEnvelope, ImportPayload } from '../shared/types.js'
@@ -78,6 +92,24 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+function sendIcon(req: IncomingMessage, res: ServerResponse, mediaType: string, bytes: Uint8Array, version: string): void {
+  const etag = `"${version}"`
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { etag })
+    res.end()
+    return
+  }
+  res.writeHead(200, {
+    'content-type': mediaType,
+    'content-length': bytes.byteLength,
+    'cache-control': 'private, max-age=300',
+    etag,
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  })
+  res.end(bytes)
+}
+
 export function registerRoutes(ctx: unknown, deps: OpsDeps, version: string): () => void {
   const host = ctx as { get?: (name: string) => unknown } | null
   let router: RouterFace | undefined
@@ -106,6 +138,34 @@ export function registerRoutes(ctx: unknown, deps: OpsDeps, version: string): ()
       }
       if (method === 'GET' && path === `${ROUTE_PREFIX}/api/detail`) {
         json(res, 200, { ok: true, value: await detailOf(deps, url.searchParams.get('name') ?? '') })
+        return
+      }
+      if (method === 'GET' && path === `${ROUTE_PREFIX}/api/skill-icon`) {
+        const name = url.searchParams.get('name') ?? ''
+        if (!isSkillName(name)) {
+          res.writeHead(404)
+          res.end()
+          return
+        }
+        const override = deps.store.iconOverride(name)
+        if (override) {
+          const image = override.kind === 'image' ? parseDataIcon(override.value) : undefined
+          if (image) {
+            sendIcon(req, res, image.mediaType, image.bytes, String(override.updatedAt))
+            return
+          }
+        } else {
+          const index = await localIndex()
+          const group = index.groups.find(item => item.name === name)
+          const entry = group?.copies.map(copy => copy.entry).find(item => item.icon !== undefined)
+          if (entry?.icon) {
+            const bytes = await fs.readFile(entry.icon.path)
+            sendIcon(req, res, entry.icon.mediaType, bytes, entry.icon.version)
+            return
+          }
+        }
+        res.writeHead(404)
+        res.end()
         return
       }
       if (method === 'GET' && path === `${ROUTE_PREFIX}/api/catalog/popular`) {
@@ -152,6 +212,22 @@ export function registerRoutes(ctx: unknown, deps: OpsDeps, version: string): ()
         }
         if (path === `${ROUTE_PREFIX}/api/delete`) {
           json(res, 200, { ok: true, value: await deleteSkill(deps, text(body['name'])) })
+          return
+        }
+        if (path === `${ROUTE_PREFIX}/api/icon`) {
+          json(res, 200, {
+            ok: true,
+            value: await setSkillIcon(deps, {
+              name: text(body['name']),
+              kind: text(body['kind']) === 'glyph' ? 'glyph' : 'image',
+              value: text(body['value']),
+            }),
+          })
+          return
+        }
+        if (path === `${ROUTE_PREFIX}/api/icon/reset`) {
+          await resetSkillIcon(deps, text(body['name']))
+          json(res, 200, { ok: true, value: {} })
           return
         }
         if (path === `${ROUTE_PREFIX}/api/import`) {

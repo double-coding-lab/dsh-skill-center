@@ -128,6 +128,24 @@ export const EN: Record<string, string> = {
     'Skill policy storage is unavailable. All skills are treated as disabled and changes are blocked.',
   '技能策略读取失败：{detail}': 'Failed to read skill policies: {detail}',
   '{name} 的操作': 'Actions for {name}',
+  '更换图标': 'Change icon',
+  '恢复默认': 'Reset to default',
+  '上传图片': 'Upload image',
+  'SVG、PNG、JPEG 或 WebP，最大 256 KB': 'SVG, PNG, JPEG, or WebP, up to 256 KB',
+  '图标不能超过 256 KB': 'The icon must not exceed 256 KB',
+  '只支持 SVG、PNG、JPEG 或 WebP': 'Only SVG, PNG, JPEG, or WebP are supported',
+  '读取图片失败': 'Failed to read the image',
+  '图标已更新': 'Icon updated',
+  '图标已恢复默认': 'Icon reset to default',
+  '文档': 'Document',
+  '数据': 'Data',
+  '图像': 'Image',
+  '网页': 'Web',
+  '安全': 'Security',
+  '测试': 'Test',
+  '终端': 'Terminal',
+  '搜索': 'Search',
+  '通用': 'General',
 }
 
 export const HOST_ERROR_EN: Record<string, string> = {
@@ -172,4 +190,8 @@ export const HOST_ERROR_EN: Record<string, string> = {
   '本地文件已被修改，继续安装会覆盖这些修改':
     'Local files were modified; continuing will overwrite them',
   '该技能不是从市场安装的': 'This skill was not installed from the market',
+  '技能图标存储不可写': 'Skill icon storage is not writable',
+  '图标标识无效': 'Invalid icon id',
+  '图标必须是 SVG、PNG、JPEG 或 WebP，且不超过 256 KB':
+    'The icon must be SVG, PNG, JPEG, or WebP and no larger than 256 KB',
 }

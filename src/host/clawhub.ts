@@ -1,4 +1,5 @@
 import { parseSkillDoc } from './frontmatter.js'
+import { normalizeCatalogIcon } from './icon.js'
 import { CATALOG_TIMEOUT_MS, CLAWHUB_BASE, MAX_JSON_BYTES, MAX_ZIP_BYTES } from '../shared/types.js'
 import type { CatalogItem } from '../shared/types.js'
 
@@ -86,7 +87,26 @@ async function requestJson(path: string): Promise<Record<string, unknown>> {
   }
 }
 
-function itemOf(owner: unknown, slug: unknown, title: unknown, summary: unknown, downloads: unknown, version: unknown, icon: unknown): CatalogItem | null {
+function topicsOf(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const topics = value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim().slice(0, 48))
+    .filter(Boolean)
+    .slice(0, 8)
+  return topics.length ? topics : undefined
+}
+
+function itemOf(
+  owner: unknown,
+  slug: unknown,
+  title: unknown,
+  summary: unknown,
+  downloads: unknown,
+  version: unknown,
+  icon: unknown,
+  topics: unknown,
+): CatalogItem | null {
   if (!isIdentifier(owner) || !isIdentifier(slug)) return null
   const item: CatalogItem = {
     key: `${owner}/${slug}`,
@@ -99,8 +119,10 @@ function itemOf(owner: unknown, slug: unknown, title: unknown, summary: unknown,
   if (downloadsValue !== undefined) item.downloads = downloadsValue
   const versionText = safeText(version, 64)
   if (versionText) item.version = versionText
-  const iconText = safeText(icon, 2048)
+  const iconText = normalizeCatalogIcon(icon)
   if (iconText) item.icon = iconText
+  const topicsList = topicsOf(topics)
+  if (topicsList) item.topics = topicsList
   return item
 }
 
@@ -142,6 +164,7 @@ export async function listPopular(options: { limit?: number; cursor?: string } =
           (record['stats'] as Record<string, unknown> | undefined)?.['downloads'],
           versionOf(record),
           record['icon'],
+          record['topics'],
         )
         if (item && !seen.has(item.key)) {
           seen.add(item.key)
@@ -174,7 +197,18 @@ export async function search(options: { q: string; limit?: number }): Promise<Ca
       const canonical = typeof record['canonicalUrl'] === 'string' ? record['canonicalUrl'].split('/') : []
       const owner = parts[0] ?? canonical[1]
       const slug = parts[1] ?? canonical[3]
-      const item = itemOf(owner, slug, record['displayName'], record['summary'], record['downloads'], versionOf(record), record['icon'])
+      const native = record['native'] as Record<string, unknown> | undefined
+      const nativeSkill = native?.['skill'] as Record<string, unknown> | undefined
+      const item = itemOf(
+        owner,
+        slug,
+        record['displayName'],
+        record['summary'],
+        record['downloads'],
+        versionOf(record),
+        record['icon'],
+        record['topics'] ?? nativeSkill?.['categories'],
+      )
       if (item) items.push(item)
       if (items.length >= limit) break
     }
@@ -201,6 +235,7 @@ export async function fetchDetail(options: { owner: string; slug: string }): Pro
       (skill['stats'] as Record<string, unknown> | undefined)?.['downloads'],
       latest['version'] ?? versionOf(skill),
       skill['icon'],
+      skill['topics'] ?? skill['categories'],
     )
     if (!item) throw fail('catalog_invalid', 'ClawHub 返回了无效的技能详情')
     return {

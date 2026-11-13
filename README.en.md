@@ -69,12 +69,6 @@ Browse the ClawHub download chart, search, preview the body, then install, updat
 
 The panel, market, detail pages and dialogs follow the Chinese/English switch in DSH settings. Changes apply immediately, with no need to reopen the panel.
 
-## Why toggling does not edit files
-
-DSH skill providers have ranks. User-level skills are served by providers around 400/450, and preset skills sit in a nearer layer at 299. The plugin gives its own provider `rank=298` and publishes a `modelInvocable=false`, `userInvocable=false` candidate for every disabled name. That shadows the native registration while the source file stays byte-for-byte identical.
-
-Presets mount their skill provider in a nearer preset layer that a global registration cannot shadow, so the plugin also registers inside every live agent context.
-
 ## Creation flow
 
 1. Open "Add → Create skill" and enter a goal.

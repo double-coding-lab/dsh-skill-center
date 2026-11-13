@@ -69,12 +69,6 @@ dsh-skill-center 是 DeepSeek Harness 的技能面板：查看本机、公共和
 
 面板、市场、详情和弹窗跟随 DSH 设置里的中英文切换，切换后立即生效，不需要重开面板。
 
-## 为什么启停不用改文件
-
-DSH 的技能 provider 有优先级。用户级技能由 400/450 一类的 provider 提供，preset 技能挂在更近的 299 层。插件为自己的 provider 声明 `rank=298`，对每个停用的名字发布一条 `modelInvocable=false`、`userInvocable=false` 的候选，压住宿主原生注册，但源文件保持不变。
-
-preset 把技能 provider 挂在更近的 preset 层，全局注册遮不住它，所以插件还会在每个存活 agent 的 ctx 里再注册一份。
-
 ## 创建链路
 
 1. 「添加 → 创建技能」输入目标。

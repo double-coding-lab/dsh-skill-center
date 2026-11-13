@@ -10,6 +10,22 @@
     "clawhub"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/double-coding-lab/dsh-skill-center.git"
+  },
+  "homepage": "https://github.com/double-coding-lab/dsh-skill-center#readme",
+  "bugs": {
+    "url": "https://github.com/double-coding-lab/dsh-skill-center/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.0-rc.1 <0.3.0"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

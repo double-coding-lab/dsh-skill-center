@@ -430,8 +430,8 @@ function Panel({ onCreate }: { onCreate: (description: string) => void }): JSX.E
               </button>
               {addOpen ? (
                 <>
-                  <div className="dsc-mask" onClick={() => setAddOpen(false)} />
-                  <div className="dsc-menu" role="menu">
+                  <div className="dsc-mask" data-window-drag-exclude onClick={() => setAddOpen(false)} />
+                  <div className="dsc-menu" data-window-drag-exclude role="menu">
                     <button
                       type="button"
                       role="menuitem"
@@ -824,7 +824,7 @@ function RowMenu(props: { name: string; market: boolean; onOpen: () => void; onD
         <IconMore size={16} />
       </IconButton>
       {open ? (
-        <div className="dsc-menu is-row" role="menu" onClick={event => event.stopPropagation()}>
+        <div className="dsc-menu is-row" data-window-drag-exclude role="menu" onClick={event => event.stopPropagation()}>
           <button
             type="button"
             role="menuitem"
@@ -1200,7 +1200,7 @@ function DialogShell(props: {
 
   return createPortal(
     <div
-      className="dsc-overlay"
+      className="dsc-overlay" data-window-drag-exclude
       onMouseDown={event => {
         if (event.target === event.currentTarget) props.onClose()
       }}
